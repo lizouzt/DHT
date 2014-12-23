@@ -42,7 +42,7 @@ class DHTCollector(object):
     _active_downloads = 30
     _alert_queue_size = 4000
     _dht_announce_interval = 60
-    _torrent_upload_limit = 20000
+    _torrent_upload_limit = 10000
     _torrent_download_limit = 20000
     _auto_manage_startup = 30
     _auto_manage_interval = 15
@@ -59,7 +59,7 @@ class DHTCollector(object):
     def __init__(self,
                  session_nums=30,
                  delay_interval=40,
-                 exit_time=2*60*60,
+                 exit_time=60*60,
                  result_file=None,
                  stat_file=None):
         self._session_nums = session_nums
@@ -159,9 +159,6 @@ class DHTCollector(object):
                 session pop the torrent which attempted to be added.
                 包含当前add动作的状态，属性：error、handle
                 '''
-                self._ALERT_TYPE_SESSION = None
-                logging.info('add torrent alert.')
-
                 alert.handle.set_upload_limit(self._torrent_upload_limit)
                 alert.handle.set_download_limit(self._torrent_download_limit)
 
@@ -175,10 +172,12 @@ class DHTCollector(object):
 
             if isinstance(alert, lt.torrent_added_alert):
                 logging.info('torrent_added_alert')
+                # if self._ALERT_TYPE_SESSION is None:
+                #     self._ALERT_TYPE_SESSION = session
 
             if isinstance(alert, lt.metadata_received_alert):
                 logging.info('metadata_received_alert')
-                print 'metadata received.'
+                print 'metadata received'
                 handle = alert.handle
                 if handle:
                     self._get_file_info_from_torrent(handle)
@@ -213,14 +212,15 @@ class DHTCollector(object):
                     self._meta_list[info_hash] = 1
                     self._current_meta_count += 1
                     self.add_magnet(session, alert.info_hash)
+
             elif isinstance(alert, lt.torrent_removed_alert):
                 logging.info('removed torrent: '+alert.message())
 
-            ##################################
-            #elif self._ALERT_TYPE_SESSION is not None and self._ALERT_TYPE_SESSION == session:
-            #    logging.info('Alert message: '+ alert.message())
-            #    logging.info('Alert category: ' + str(alert.category()))
-            ################################3
+            #################################
+            # elif self._ALERT_TYPE_SESSION is not None and self._ALERT_TYPE_SESSION == session:
+            #    logging.info('********Alert message: '+ alert.message() + '    Alert category: ' + str(alert.category()))
+            #################################
+
     # 创建 session 对象
     def create_session(self, begin_port=32800):
         self._start_port = begin_port
@@ -247,6 +247,9 @@ class DHTCollector(object):
         return self._sessions
 
     # 添加磁力链接
+    '''
+    抽取到download类实现
+    '''
     def add_magnet(self, session, info_hash):
         # 创建临时下载目录
         if not os.path.isdir('collections'):
@@ -263,8 +266,8 @@ class DHTCollector(object):
 
         session.async_add_torrent(params)
 
-        if self._ALERT_TYPE_SESSION == None:
-            self._ALERT_TYPE_SESSION = session
+        # if self._ALERT_TYPE_SESSION == None:
+            # self._ALERT_TYPE_SESSION = session
 
         logging.info('Get torrent starting.')
 
