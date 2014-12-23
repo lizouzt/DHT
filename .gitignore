@@ -1,4 +1,12 @@
 # Byte-compiled / optimized / DLL files
+*result.json
+*.swp
+*.pyc
+*.torrent
+*.bak
+*.log
+.DS_Store
+
 __pycache__/
 *.py[cod]
 
