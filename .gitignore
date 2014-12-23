@@ -4,6 +4,10 @@
 *.pyc
 *.torrent
 *.log
+*.sql
+*.db
+*.gz
+*.tar
 .DS_Store
 
 __pycache__/
