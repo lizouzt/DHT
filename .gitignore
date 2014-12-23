@@ -3,7 +3,6 @@
 *.swp
 *.pyc
 *.torrent
-*.bak
 *.log
 .DS_Store
 
