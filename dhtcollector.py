@@ -8,6 +8,9 @@ import libtorrent as lt
 from string import Template
 from bencode import bdecode
 from urllib2 import HTTPError
+import dbManage
+
+manage = dbManage.DBManage()
 
 logging.basicConfig(level=logging.INFO,
                    # format='%(asctime)s [line: %(lineno)d] %(levelname)s %(message)s',
@@ -57,9 +60,9 @@ class DHTCollector(object):
     _meta_list = {}
 
     def __init__(self,
-                 session_nums=30,
+                 session_nums=50,
                  delay_interval=40,
-                 exit_time=60*60,
+                 exit_time=4*60*60,
                  result_file=None,
                  stat_file=None):
         self._session_nums = session_nums
@@ -95,11 +98,11 @@ class DHTCollector(object):
             file_info['total_size'] = torrent_info_obj.total_size()
             file_info['is_valid'] = torrent_info_obj.is_valid()
             file_info['priv'] = torrent_info_obj.priv()
-            file_info['is_i2p'] = torrent_info_obj.is_i2p()
-            file_info['creation_date'] = torrent_info_obj.creation_date()
+            # file_info['is_i2p'] = torrent_info_obj.is_i2p()
+            # file_info['creation_date'] = torrent_info_obj.creation_date()
             file_info['info_hash'] = torrent_info_obj.info_hash().to_string().encode('hex')
 
-            file_info['mediaType'] = None
+            file_info['media_type'] = None
             file_info['files'] = []
 
             for file in torrent_info_obj.files():
@@ -108,15 +111,18 @@ class DHTCollector(object):
                     'size': file.size
                 })
                 
-                if file_info['mediaType'] is None and re.search(RVIDEO, file.path):
-                    file_info['mediaType'] = 'video'
-                elif file_info['mediaType'] is None and re.search(RAUDIO, file.path):
-                    file_info['mediaType'] = 'audio'
+                if file_info['media_type'] is None and re.search(RVIDEO, file.path):
+                    file_info['media_type'] = 'video'
+                elif file_info['media_type'] is None and re.search(RAUDIO, file.path):
+                    file_info['media_type'] = 'audio'
         
         except Exception, e:
             logging.error('torrent_info_error: '+str(e))
 
+
         print json.dumps(file_info, ensure_ascii=False)
+
+        manage.saveTorrent(file_info)
 
     def _get_runtime(self, interval):
         day = interval / (60*60*24)
@@ -335,6 +341,8 @@ class DHTCollector(object):
                 # stop
                 logging.info('stoped!')
                 break
+            else:
+                print '\t',interval,'----',self._exit_time
 
         # 销毁p2p客户端
         for session in self._sessions:

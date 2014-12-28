@@ -1,11 +1,11 @@
 torrents:
-  pid: 845
-  time: 2014-12-23 23:18:34
-  run time: day: 0, hour: 0, minute: 0, second: 20
+  pid: 1213
+  time: 2014-12-28 22:28:48
+  run time: day: 0, hour: 0, minute: 45, second: 56
   start port: 32900
-  collect session num: 30
-  info hash nums from get peers: 1
-  torrent collection rate: 2.897338 /minute
-  current torrent count: 1
-  total torrent count: 86
+  collect session num: 50
+  info hash nums from get peers: 0
+  torrent collection rate: 0.000000 /minute
+  current torrent count: 0
+  total torrent count: 0
 

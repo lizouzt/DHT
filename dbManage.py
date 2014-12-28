@@ -10,6 +10,8 @@ from sqlalchemy.orm import mapper,sessionmaker,create_session
 
 class Movie(object):
 	pass
+class Torrent(object):
+	pass
 
 class DBManage():
 	DEFAULT_VAL = '未知'
@@ -20,7 +22,9 @@ class DBManage():
 		self.db = create_engine("mysql://localhost/test")
 		metadata = MetaData(bind=self.db)
 		self.table_movies = Table('movies', metadata, autoload=True)
+		self.table_torrents = Table('torrents', metadata, autoload=True)
 		mapper_movies = mapper(Movie, self.table_movies)
+		mapper_torrent = mapper(Torrent, self.table_movies)
 
 	def reflectMovieObject(self, data):
 		movie = Movie()
@@ -37,6 +41,46 @@ class DBManage():
 			return None
 
 		return movie
+
+	def reflectTorrentObject(self, data):
+		torrent = Torrent()
+		torrent.name = data['name']
+		torrent.creator = data['creator']
+		torrent.num_files = data['num_files']
+		torrent.total_size = data['total_size']
+		torrent.priv = data['priv']
+		torrent.info_hash = data['info_hash']
+		torrent.media_type = data['media_type']
+		torrent.files = data['files']
+
+		if 'creation_date' in data:
+			torrent.creation_date = data['creation_date']
+
+		if 'is_valid' in data:
+			torrent.isvalid = data['is_valid']
+
+		if torrent.name == None or torrent.info_hash == None:
+			return None
+
+		return torrent
+
+
+	def saveTorrent(self, data):
+		torrent = self.reflectTorrentObject(data)
+
+		if torrent is not None:
+			Maker = sessionmaker()
+			Maker.configure(bind=self.db)
+			session = Maker()
+
+			if session.query(Torrent).filter_by(info_hash=torrent.info_hash).scalar() == None:
+				session.add(torrent)
+				session.flush()
+
+			session.commit()
+			print 'Inserted'
+		else:
+			print 'Nope'
 
 	def saveMovie(self, data):
 		movie = self.reflectMovieObject(data)
