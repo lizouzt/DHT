@@ -48,10 +48,12 @@ class DBManage():
 		torrent.creator = data['creator']
 		torrent.num_files = data['num_files']
 		torrent.total_size = data['total_size']
-		torrent.priv = data['priv']
 		torrent.info_hash = data['info_hash']
 		torrent.media_type = data['media_type']
 		torrent.files = data['files']
+
+		if 'priv' in data:
+			torrent.priv = data['priv']
 
 		if 'creation_date' in data:
 			torrent.creation_date = data['creation_date']

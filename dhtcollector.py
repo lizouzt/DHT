@@ -87,7 +87,6 @@ class DHTCollector(object):
 
     def _get_file_info_from_torrent(self, handle):
         file_info = {}
-
         try:
             torrent_info_obj = handle.get_torrent_info()
             
@@ -96,7 +95,6 @@ class DHTCollector(object):
             file_info['comment'] = torrent_info_obj.comment()
             file_info['num_files'] = torrent_info_obj.num_files()
             file_info['total_size'] = torrent_info_obj.total_size()
-            file_info['is_valid'] = torrent_info_obj.is_valid()
             file_info['priv'] = torrent_info_obj.priv()
             # file_info['is_i2p'] = torrent_info_obj.is_i2p()
             # file_info['creation_date'] = torrent_info_obj.creation_date()
@@ -149,13 +147,12 @@ class DHTCollector(object):
     then request trackers connect.
     7:tracker events after torrent actived. 
     Includes announcing to trackers, receiving responses, warnings and errors [tracker_notification:[16]].
-    8:Do 9,10 steps and after connected to trackers succeed request trackers for pieces of the torrent.
-    (9):Post alerts when blocks are requested and completed. 
-    Also when pieces are completed.[progress_notification].
-    (10):add torrent to session and post add_torrent_alert.
+    8:Success connected to trackers succeed request trackers for pieces of the torrent.
+    9:add torrent to session and post add_torrent_alert.
     After add torrent to session succeed post torrent_added_alert.
-    12:After both 9 and 10 finished request files belong to the torrent.
-    13:Pieces download ended post torrent_finished_alert.
+    10:Get metadata
+    11:When pieces download completed.[progress_notification].
+    13:download ended post torrent_finished_alert.
     '''
     def _handle_alerts(self, session, alerts):
         while len(alerts):
@@ -178,18 +175,23 @@ class DHTCollector(object):
 
             if isinstance(alert, lt.torrent_added_alert):
                 logging.info('torrent_added_alert')
-                # if self._ALERT_TYPE_SESSION is None:
-                #     self._ALERT_TYPE_SESSION = session
 
             if isinstance(alert, lt.metadata_received_alert):
                 logging.info('metadata_received_alert')
                 print 'metadata received'
                 handle = alert.handle
-                if handle:
+                if handle and handle.is_valid():
                     self._get_file_info_from_torrent(handle)
                     #不需要下载
                     session.remove_torrent(handle, True)
 
+            if isinstance(alert, lt.metadata_failed_alert):
+                logging.info('metadata_failed_alert')
+                handle = alert.handle
+                if handle and handle.is_valid():
+                    self._get_file_info_from_torrent(handle)
+                    #不需要下载
+                    session.remove_torrent(handle, True)
 
             elif isinstance(alert, lt.dht_announce_alert):
                 '''
@@ -202,7 +204,7 @@ class DHTCollector(object):
                 else:
                     self._meta_list[info_hash] = 1
                     self._current_meta_count += 1
-                    self.add_magnet(session, alert.info_hash)
+                    self.add_magnet(session, alert.info_hash.to_string())
 
             elif isinstance(alert, lt.dht_get_peers_alert):
                 '''
@@ -217,7 +219,7 @@ class DHTCollector(object):
                     self._infohash_queue_from_getpeers.append(info_hash)
                     self._meta_list[info_hash] = 1
                     self._current_meta_count += 1
-                    self.add_magnet(session, alert.info_hash)
+                    self.add_magnet(session, alert.info_hash.to_string())
 
             elif isinstance(alert, lt.torrent_removed_alert):
                 logging.info('removed torrent: '+alert.message())
