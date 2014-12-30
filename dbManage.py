@@ -10,7 +10,8 @@ from sqlalchemy.orm import mapper,sessionmaker,create_session
 
 class Movie(object):
 	pass
-class Torrent(object):
+
+class Torrents(object):
 	pass
 
 class DBManage():
@@ -24,7 +25,7 @@ class DBManage():
 		self.table_movies = Table('movies', metadata, autoload=True)
 		self.table_torrents = Table('torrents', metadata, autoload=True)
 		mapper_movies = mapper(Movie, self.table_movies)
-		mapper_torrent = mapper(Torrent, self.table_movies)
+		mapper_torrent = mapper(Torrents, self.table_torrents)
 
 	def reflectMovieObject(self, data):
 		movie = Movie()
@@ -43,7 +44,7 @@ class DBManage():
 		return movie
 
 	def reflectTorrentObject(self, data):
-		torrent = Torrent()
+		torrent = Torrents()
 		torrent.name = data['name']
 		torrent.creator = data['creator']
 		torrent.num_files = data['num_files']
@@ -74,8 +75,8 @@ class DBManage():
 			Maker = sessionmaker()
 			Maker.configure(bind=self.db)
 			session = Maker()
-
-			if session.query(Torrent).filter_by(info_hash=torrent.info_hash).scalar() == None:
+			
+			if session.query(Torrents).filter_by(info_hash=torrent.info_hash).scalar() == None:
 				session.add(torrent)
 				session.flush()
 
@@ -91,7 +92,7 @@ class DBManage():
 			Maker = sessionmaker()
 			Maker.configure(bind=self.db)
 			session = Maker()
-			
+
 			if session.query(Movie).filter_by(id=movie.id).scalar() == None:
 				session.add(movie)
 				session.flush()
