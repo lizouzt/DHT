@@ -1,7 +1,7 @@
 torrents:
   pid: 1028
-  time: 2014-12-30 23:48:48
-  run time: day: 0, hour: 0, minute: 12, second: 43
+  time: 2014-12-30 23:50:10
+  run time: day: 0, hour: 0, minute: 14, second: 6
   start port: 32900
   collect session num: 50
   info hash nums from get peers: 0
