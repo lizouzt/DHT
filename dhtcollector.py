@@ -113,7 +113,8 @@ class DHTCollector(object):
                     file_info['media_type'] = 'video'
                 elif file_info['media_type'] is None and re.search(RAUDIO, file.path):
                     file_info['media_type'] = 'audio'
-        
+            file_info['files'] = json.dumps(file_info['files'], ensure_ascii=False)
+
         except Exception, e:
             logging.error('torrent_info_error: '+str(e))
 
