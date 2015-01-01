@@ -26,12 +26,6 @@ DHT_ROUTER_NODES = [
     ('dht.transmissionbt.com', 6881)
 ]
 
-BTSTORAGESERVERS = [
-    'http://thetorrent.org/${info_hash}.torrent',
-    'https://zoink.it/torrent/${info_hash}.torrent',
-    'https://torcache.net/torrent/${info_hash}.torrent'
-]
-
 RVIDEO = re.compile(r"\.mkv$|\.mp4$|\.avi$|\.rmvb$|\.rm$|\.asf$|\.mpg$|\.wmv$|\.vob$")
 RAUDIO = re.compile(r"\.mp3$|\.ogg$|\.asf$|\.wma$|\.wav$|\.acc$|\.flac$|\.ape$|\.lpac$")
 
@@ -62,7 +56,7 @@ class DHTCollector(object):
     def __init__(self,
                  session_nums=50,
                  delay_interval=40,
-                 exit_time=4*60*60,
+                 exit_time=10*60*60,
                  result_file=None,
                  stat_file=None):
         self._session_nums = session_nums
@@ -205,7 +199,7 @@ class DHTCollector(object):
                 else:
                     self._meta_list[info_hash] = 1
                     self._current_meta_count += 1
-                    self.add_magnet(session, alert.info_hash.to_string())
+                    self.add_magnet(session, alert.info_hash)
 
             elif isinstance(alert, lt.dht_get_peers_alert):
                 '''
@@ -220,7 +214,7 @@ class DHTCollector(object):
                     self._infohash_queue_from_getpeers.append(info_hash)
                     self._meta_list[info_hash] = 1
                     self._current_meta_count += 1
-                    self.add_magnet(session, alert.info_hash.to_string())
+                    self.add_magnet(session, alert.info_hash)
 
             elif isinstance(alert, lt.torrent_removed_alert):
                 logging.info('removed torrent: '+alert.message())
