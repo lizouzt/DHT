@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-import os
+import os,pdb
 
 from twisted.application import service, internet
 from twisted.internet.protocol import Factory
@@ -57,7 +57,6 @@ class CollectorServices(service.Service):
         self._work_stat = None
         self._serv = None
         self._port = port
-        self.startService()
 
     def startService(self):
         log.msg('start run collectord')
@@ -68,7 +67,7 @@ class CollectorServices(service.Service):
         self._task.start(10.0)
         log.msg('start listen %d' % self._port)
         #启动TCP监听node KRPC交互
-        uelf._serv = reactor.listenTCP(self._port, CollectorFactory(self))
+        self._serv = reactor.listenTCP(self._port, CollectorFactory(self))
 
     def stopService(self):
         log.msg('stop run collectord')
@@ -104,6 +103,7 @@ class CollectorServices(service.Service):
         if self._work_d is None:
             #作为peer读取DHT网络中获取的UDP数据
             self._start_work()
+        log.msg('_readstat arund');
         if self._query_protocols and os.path.isfile(statfile):
             #处理请求队列，将自己数据发送给其他peer
             try:
@@ -127,5 +127,6 @@ application = service.Application('collectord')
 logfile = DailyLogFile('collectord.log', './collectord_log')
 log.startLogging(open("./collectord_log/collectord.log",'w'))
 application.setComponent(ILogObserver, FileLogObserver(logfile).emit)
-services =  CollectorServices(31000).setServiceParent(application)
+services = CollectorServices(32900)
+services.setServiceParent(application)
 services.startService()

@@ -20,7 +20,11 @@ class DBManage():
 		####
 		#sqlalchemy.create_engine('mysql://user:password@127.0.0.1/test?charset=utf8')
 		####
-		self.db = create_engine("mysql://localhost/test")
+		try:
+			self.db = create_engine("mysql://localhost/test")
+		except Exception,e:
+			print "Connect Mysql Engine Error %d: %s" % (e.args[0], e.args[1])
+
 		metadata = MetaData(bind=self.db)
 		self.table_movies = Table('movies', metadata, autoload=True)
 		self.table_torrents = Table('torrents', metadata, autoload=True)

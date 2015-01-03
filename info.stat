@@ -1,0 +1,11 @@
+torrents:
+  pid: 1134
+  time: 2015-01-03 23:40:54
+  run time: day: 0, hour: 0, minute: 44, second: 7
+  start port: 65536
+  collect session num: 50
+  info hash nums from get peers: 3
+  torrent collection rate: 0.067984 /minute
+  current torrent count: 3
+  total torrent count: 6
+

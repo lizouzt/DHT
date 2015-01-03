@@ -58,12 +58,14 @@ class DHTCollector(object):
                  delay_interval=40,
                  exit_time=10*60*60,
                  result_file=None,
-                 stat_file=None):
+                 stat_file=None,
+                 never_stop=False):
         self._session_nums = session_nums
         self._delay_interval = delay_interval
         self._exit_time = exit_time
         self._result_file = result_file
         self._stat_file = stat_file
+        self._never_stop = never_stop
         self._backup_result()
 
         try:
@@ -334,12 +336,13 @@ class DHTCollector(object):
             self._backup_result()
 
             # 测试是否到达退出时间
-            if interval >= self._exit_time:
+            if self._never_stop or interval < self._exit_time:
+                print '\t',interval,'----',self._exit_time
+
+            elif interval >= self._exit_time:
                 # stop
                 logging.info('stoped!')
                 break
-            else:
-                print '\t',interval,'----',self._exit_time
 
         # 销毁p2p客户端
         for session in self._sessions:
@@ -349,16 +352,22 @@ class DHTCollector(object):
         logging.info('Ended.')
 
 if __name__ == '__main__':
-    if len(sys.argv) != 3:
+    if len(sys.argv) < 3:
         print 'argument err:'
         print '\tpython dhtcollector.py result.json collector.state\n'
         sys.exit(-1)
 
     result_file = sys.argv[1]
     stat_file = sys.argv[2]
+
+    never_stop = False
+    if len(sys.argv) == 4 and sys.argv[3] == 'roll':
+        never_stop = True
+
     # 创建采集对象
     sd = DHTCollector(result_file=result_file,
-                   stat_file=stat_file)
+                   stat_file=stat_file,
+                   never_stop=never_stop)
     # 创建p2p客户端
-    sd.create_session(32900)
+    sd.create_session(65536)
     sd.start_work()
