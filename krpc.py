@@ -36,11 +36,12 @@ BOOTSTRAP_NODES = [
     ('dht.transmissionbt.com', 6881)
 ]
 
+s = None
 PORT = 8005
 TID_LENGTH = 4
 KRPC_TIMEOUT = 20
 REBORN_TIME = 5 * 60
-K = 4
+K = 2
 KEEP_RUNNING = True
 _infohash_from_getpeers_count = 0
 _infohash_from_announcepeers_count = 0
@@ -68,7 +69,7 @@ def decode_nodes(nodes):
         nid = nodes[i:i+20]  
         ip = inet_ntoa(nodes[i+20:i+24])  
         port = unpack("!H", nodes[i+24:i+26])[0]  
-        n.append( (nid, ip, port) )  
+        n.append( (nid, ip, port) )
     return n
 def encode_nodes(nodes):  
     strings = []
@@ -123,7 +124,9 @@ class KRPC(object):
         except:
             pass
 class Client(KRPC):
-    def __init__(self):
+    def __init__(self, table, master):
+        self.table = table
+        self.master = master
         timer(KRPC_TIMEOUT, self.fill_the_buckets)
         timer(REBORN_TIME, self.reborn)
         KRPC.__init__(self)
@@ -157,15 +160,15 @@ class Client(KRPC):
         if len( self.table.buckets ) < 2:
             logger.info('fill_the_buckets')
             self.joinDHT()
-
         timer(KRPC_TIMEOUT, self.fill_the_buckets)
     def reborn(self):
+        self.master.output_stat()
         self.table.nid = random_id()
         self.table.buckets = [ KBucket(0, 2**160) ]
-        self.master.output_stat()
-        logger.info('REBORN! last Buckets nums: ' + len(self.table.buckets))
+        logger.info('REBORN!')
         timer(REBORN_TIME, self.reborn)
     def start(self):
+        logger.info('START!')
         self.joinDHT()
         while True:
             try:
@@ -174,8 +177,6 @@ class Client(KRPC):
                 self.types[msg["y"]](msg, address)
             except Exception:
                 pass
-            finally:
-                time.sleep(0.3)
     def get_neighbor(self, target):
         return target[:10] + random_id()[10:]
 
@@ -184,7 +185,7 @@ class Server(Client):
         self.table = table
         self.master = master
         self.port = port
-        Client.__init__(self)
+        Client.__init__(self, table, master)
     def ping_received(self, msg, address):
         try:
             nid = msg["a"]["id"]
@@ -230,13 +231,19 @@ class Server(Client):
             }
             self.table.append(KNode(nid, *address))
             self.send_krpc(msg, address)
-            _infohash_from_getpeers_count += 1
+            _infohash_from_getpeers_count = _infohash_from_getpeers_count + 1
             logger.info('get_peers_received: '+infohash.encode('hex'))
             self.find_node(address, nid)
         except KeyError:
             pass
     def announce_peer_received(self, msg, address):
         try:
+            print '\t','*'*20
+            print str(msg)
+            print '*'*20,'\t'
+            KEEP_RUNNING = False
+            s.socket.close()
+
             pdb.set_trace()
             infohash = msg["a"]["info_hash"]
             nid = msg["a"]["id"]
@@ -247,7 +254,7 @@ class Server(Client):
             }
             self.table.append(KNode(nid, *address))
             self.send_krpc(msg, address)
-            _infohash_from_announcepeers_count += 1
+            _infohash_from_announcepeers_count = _infohash_from_announcepeers_count + 1
             logger.info('announce_peer_received: '+infohash.encode('hex'))
             self.find_node(address, nid)
         except KeyError:
@@ -301,9 +308,9 @@ class KTable(object):
         new = KBucket(point, old.max)
         old.max = point
         self.buckets.insert(index + 1, new)  
-        for node in old.nodes[:]:  
+        for node in old.nodes[:]:
             if new.in_range(node.nid):
-                new.append(node)  
+                new.append(node)
                 old.remove(node)
     def get_nodes_count(self):
         c = 0
