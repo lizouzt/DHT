@@ -174,8 +174,6 @@ class Client(KRPC):
                 self.types[msg["y"]](msg, address)
             except Exception:
                 pass
-            finally:
-                time.sleep(0.3)
     def get_neighbor(self, target):
         return target[:10] + random_id()[10:]
 
