@@ -1,9 +1,9 @@
 torrents:
-  pid: 3148
-  time: 2015-01-04 19:19:55
+  pid: 1516
+  time: 2015-01-04 23:13:08
   run time: day: 0, hour: 0, minute: 5, second: 0
   start port: 8005
-  Server Buckets count: 0
+  Server Buckets count: 22
   info_hash nums from get peers: 0
   info_hash nums from announce peers: 0
 
