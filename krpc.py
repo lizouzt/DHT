@@ -16,7 +16,7 @@ from bencode import bencode, bdecode
 import dbManage
 
 logger = logging.getLogger()
-fh = logging.FileHandler('%s.log' % date.today())
+fh = logging.FileHandler('%s.log' % date.today(), 'wb')
 sh = logging.StreamHandler()
 
 fhFmt = logging.Formatter('%(asctime)s [line: %(lineno)d] %(levelname)s %(message)s')
@@ -36,54 +36,53 @@ BOOTSTRAP_NODES = [
     ('dht.transmissionbt.com', 6881)
 ]
 
-s = None
 PORT = 8005
+K = 8
 TID_LENGTH = 4
-KRPC_TIMEOUT = 20
-REBORN_TIME = 5 * 60
-K = 2
+KRPC_TIMEOUT = {'time': 20, 'timer': None}
+REBORN_TIME = {'time': 10 * 60, 'timer': None}
 KEEP_RUNNING = True
-_infohash_from_getpeers_count = 0
-_infohash_from_announcepeers_count = 0
+
 #生成数字串
 #param [{init}] bytes 长度
 #return [{str}] 字符串
 def entropy(bytes):
     s = ""  
     for i in range(bytes):  
-        s += chr(randint(0, 255))  
-    return s  
+        s += chr(randint(0, 255))
+    return s
 #生成hash字串
 #return [{hash}] hash值
-def random_id():  
+def random_id():
     hash = sha1()
     hash.update(entropy(20))
-    return hash.digest() 
+    return hash.digest()
 
 def decode_nodes(nodes):
-    n = []  
-    length = len(nodes)  
-    if (length % 26) != 0:   
-        return n  
-    for i in range(0, length, 26):  
-        nid = nodes[i:i+20]  
-        ip = inet_ntoa(nodes[i+20:i+24])  
-        port = unpack("!H", nodes[i+24:i+26])[0]  
+    n = []
+    length = len(nodes)
+    if (length % 26) != 0:
+        return n
+    for i in range(0, length, 26):
+        nid = nodes[i:i+20]
+        ip = inet_ntoa(nodes[i+20:i+24])
+        port = unpack("!H", nodes[i+24:i+26])[0]
         n.append( (nid, ip, port) )
     return n
-def encode_nodes(nodes):  
+def encode_nodes(nodes):
     strings = []
-    for node in nodes:  
-        s = "%s%s%s" % (node.nid, inet_aton(node.ip), pack("!H", node.port))  
-        strings.append(s)  
-    return "".join(strings)  
-def intify(hstr):  
-    return long(hstr.encode('hex'), 16)      
+    for node in nodes:
+        s = "%s%s%s" % (node.nid, inet_aton(node.ip), pack("!H", node.port))
+        strings.append(s)
+    return "".join(strings)
+def intify(hstr):
+    return long(hstr.encode('hex'), 16)
 def timer(t, f):
-    if KEEP_RUNNING: 
-        Timer(t, f).start()
+    if KEEP_RUNNING:
+        t['timer'] = Timer(t['time'], f)
+        t['timer'].start()
     else:
-        logger.info('TIMER ENDED!')
+        print 'TIMER ENDED!'
 def get_time_formatter(interval):
     day = interval / (60*60*24)
     interval = interval % (60*60*24)
@@ -121,12 +120,10 @@ class KRPC(object):
     def send_krpc(self, msg, address):
         try:
             self.socket.sendto(bencode(msg), address)
-        except:
-            pass
+        except Exception,e:
+            logger.error('KeyError'+str(e))
 class Client(KRPC):
-    def __init__(self, table, master):
-        self.table = table
-        self.master = master
+    def __init__(self):
         timer(KRPC_TIMEOUT, self.fill_the_buckets)
         timer(REBORN_TIME, self.reborn)
         KRPC.__init__(self)
@@ -160,32 +157,40 @@ class Client(KRPC):
         if len( self.table.buckets ) < 2:
             logger.info('fill_the_buckets')
             self.joinDHT()
+
         timer(KRPC_TIMEOUT, self.fill_the_buckets)
+    def get_neighbor(self, target):
+        return target[:10] + random_id()[10:]
     def reborn(self):
-        self.master.output_stat()
+        self.master.output_stat(self.table.get_nodes_count(), self.infohash_from_getpeers_count, self.infohash_from_announcepeers_count)
         self.table.nid = random_id()
         self.table.buckets = [ KBucket(0, 2**160) ]
-        logger.info('REBORN!')
+        print 'REBORN!'
         timer(REBORN_TIME, self.reborn)
     def start(self):
-        logger.info('START!')
+        print 'START!'
         self.joinDHT()
         while True:
             try:
-                (data, address) = self.socket.recvfrom(65536)
+                (data, address) = self.socket.recvfrom(2048)
                 msg = bdecode(data)
                 self.types[msg["y"]](msg, address)
-            except Exception:
-                pass
-    def get_neighbor(self, target):
-        return target[:10] + random_id()[10:]
+            except Exception,e:
+                logger.error('KeyError'+str(e))
+    def stop(self):
+        KRPC_TIMEOUT['timer'] and KRPC_TIMEOUT['timer'].cancel()
+        REBORN_TIME['timer'] and REBORN_TIME['timer'].cancel()
+        s.socket.close()
+        print '\nSOCKET CLOSED!'
 
 class Server(Client):
     def __init__(self, master, table, port=8006):
+        self.infohash_from_getpeers_count = 0
+        self.infohash_from_announcepeers_count = 0
         self.table = table
         self.master = master
         self.port = port
-        Client.__init__(self, table, master)
+        self._client = Client.__init__(self)
     def ping_received(self, msg, address):
         try:
             nid = msg["a"]["id"]
@@ -231,20 +236,17 @@ class Server(Client):
             }
             self.table.append(KNode(nid, *address))
             self.send_krpc(msg, address)
-            _infohash_from_getpeers_count = _infohash_from_getpeers_count + 1
+            self.infohash_from_getpeers_count += 1
             logger.info('get_peers_received: '+infohash.encode('hex'))
             self.find_node(address, nid)
         except KeyError:
             pass
     def announce_peer_received(self, msg, address):
         try:
-            print '\t','*'*20
+            print '\r','*'*20
             print str(msg)
-            print '*'*20,'\t'
-            KEEP_RUNNING = False
-            s.socket.close()
+            print '*'*20,'\r'
 
-            pdb.set_trace()
             infohash = msg["a"]["info_hash"]
             nid = msg["a"]["id"]
             msg = {
@@ -254,11 +256,12 @@ class Server(Client):
             }
             self.table.append(KNode(nid, *address))
             self.send_krpc(msg, address)
-            _infohash_from_announcepeers_count = _infohash_from_announcepeers_count + 1
+            self.infohash_from_announcepeers_count += 1
             logger.info('announce_peer_received: '+infohash.encode('hex'))
             self.find_node(address, nid)
         except KeyError:
             pass
+
 class KTable(object):
     def __init__(self, nid):
         self.nid = nid
@@ -369,17 +372,16 @@ class Master(object):
     def log(self, infohash):
         pass
 
-    def output_stat(self):
+    def output_stat(self, nodes_nums=0, get_peer_nums=0, announce_peer_nums=0):
         show_content = ['torrents:']
         interval = time.time() - self.begin_time
         show_content.append('  pid: %s' % os.getpid())
-        show_content.append('  time: %s' %
-                            time.strftime('%Y-%m-%d %H:%M:%S'))
+        show_content.append('  time: %s' % time.strftime('%Y-%m-%d %H:%M:%S'))
         show_content.append('  run time: %s' % get_time_formatter(interval))
         show_content.append('  start port: %d' % PORT)
-        show_content.append('  Server Buckets count: %d' % s.table.get_nodes_count())
-        show_content.append('  info_hash nums from get peers: %d' % _infohash_from_getpeers_count)
-        show_content.append('  info_hash nums from announce peers: %d' % _infohash_from_announcepeers_count)
+        show_content.append('  k table nodes nums: %d' % nodes_nums)
+        show_content.append('  get peer nums: %d' % get_peer_nums)
+        show_content.append('  announce peer nums: %d' % announce_peer_nums)
         show_content.append('\n')
 
         try:
@@ -395,6 +397,7 @@ if __name__ == '__main__':
         s = Server(Master(m,stat_file), KTable(random_id()), PORT)
         s.start()
     except KeyboardInterrupt, e:
-        print '\tSTOP!'
         KEEP_RUNNING = False
-        s.socket.close()
+        s.stop()
+        logger.info('STOPED!')
+        exit()
