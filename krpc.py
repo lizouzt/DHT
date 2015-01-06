@@ -111,6 +111,9 @@ class KRPC(object):
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.socket.bind(("0.0.0.0", self.port))
     def response_received(self, msg, address):
+        '''
+        再区分response type
+        '''
         self.find_node_handler(msg)
     def query_received(self, msg, address):
         try:
@@ -222,6 +225,20 @@ class Server(Client):
         except KeyError:
             pass
     def get_peers_received(self, msg, address):
+        '''
+        ####
+        peer_a, peer_b, filehash
+        ####
+        peer_a: q[get_peers]{id: peer_b.nid, info_hash: filehash}
+        ->
+        peer_b: r[get_peers]{id: peer_b.nid, token: peer_b_give_to_a_the_tokenstr, value: CompactIP-address/portinfo}
+                or
+                r[get_peers]{id: peer_b.nid, token: peer_b_give_to_a_the_tokenstr, nodes: '.......'}
+        ->
+        peer_a: q[announce_peer]{id: peer_b.nid, info_hash: filehash, token: peer_b_give_to_a_the_tokenstr, port: peer_a.file_receive_port}
+        ->
+        peer_b: r[announce_peer]{id: filehash}
+        '''
         try:
             infohash = msg["a"]["info_hash"]
             neighbors = self.table.get_neighbors(infohash)
@@ -376,8 +393,8 @@ class Master(object):
         show_content.append('  time: %s' % time.strftime('%Y-%m-%d %H:%M:%S'))
         show_content.append('  run time: %s' % get_time_formatter(interval))
         show_content.append('  start port: %d' % PORT)
-        show_content.append('  k table nodes nums: %d' % nodes_nums)
-        show_content.append('  get peer nums: %d' % get_peer_nums)
+        show_content.append('  krpc table nodes nums: %d' % nodes_nums)
+        show_content.append('  get peers nums: %d' % get_peer_nums)
         show_content.append('  announce peer nums: %d' % announce_peer_nums)
         show_content.append('\n')
 
@@ -390,7 +407,8 @@ class Master(object):
 if __name__ == '__main__':
     stat_file = sys.argv[1] if len(sys.argv) >= 2 else 'info.stat'
     try:
-        m = dbManage.DBManage()
+        # m = dbManage.DBManage()
+        m = object
         s = Server(Master(m,stat_file), KTable(random_id()), PORT)
         s.start()
     except KeyboardInterrupt, e:
