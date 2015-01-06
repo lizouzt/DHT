@@ -121,7 +121,7 @@ class KRPC(object):
         try:
             self.socket.sendto(bencode(msg), address)
         except Exception,e:
-            logger.error('KeyError'+str(e))
+            logger.error('socket sendto error: '+str(e))
 class Client(KRPC):
     def __init__(self):
         timer(KRPC_TIMEOUT, self.fill_the_buckets)
@@ -155,7 +155,7 @@ class Client(KRPC):
             self.find_node(address)
     def fill_the_buckets(self):
         if len( self.table.buckets ) < 2:
-            logger.info('fill_the_buckets')
+            print 'fill_the_buckets'
             self.joinDHT()
 
         timer(KRPC_TIMEOUT, self.fill_the_buckets)
@@ -168,7 +168,7 @@ class Client(KRPC):
         print 'REBORN!'
         timer(REBORN_TIME, self.reborn)
     def start(self):
-        print 'START!'
+        logger.info('START!')
         self.joinDHT()
         while True:
             try:
@@ -176,7 +176,7 @@ class Client(KRPC):
                 msg = bdecode(data)
                 self.types[msg["y"]](msg, address)
             except Exception,e:
-                logger.error('KeyError'+str(e))
+		print 'receive error: ','----',str(e)
     def stop(self):
         KRPC_TIMEOUT['timer'] and KRPC_TIMEOUT['timer'].cancel()
         REBORN_TIME['timer'] and REBORN_TIME['timer'].cancel()
@@ -237,16 +237,14 @@ class Server(Client):
             self.table.append(KNode(nid, *address))
             self.send_krpc(msg, address)
             self.infohash_from_getpeers_count += 1
-            logger.info('get_peers_received: '+infohash.encode('hex'))
-            self.find_node(address, nid)
+            #logger.info('get_peers_received: '+infohash.encode('hex'))
+            print 'get peer received: ' + infohash.encode('hex')
+	    self.find_node(address, nid)
         except KeyError:
             pass
     def announce_peer_received(self, msg, address):
         try:
-            print '\r','*'*20
-            print str(msg)
-            print '*'*20,'\r'
-
+            logger.info('announce_peer_received: ' + str(msg))
             infohash = msg["a"]["info_hash"]
             nid = msg["a"]["id"]
             msg = {
@@ -257,7 +255,6 @@ class Server(Client):
             self.table.append(KNode(nid, *address))
             self.send_krpc(msg, address)
             self.infohash_from_announcepeers_count += 1
-            logger.info('announce_peer_received: '+infohash.encode('hex'))
             self.find_node(address, nid)
         except KeyError:
             pass
