@@ -1,8 +1,11 @@
 torrents:
-  pid: 2591
-  time: 2015-01-05 17:43:07
-  run time: day: 0, hour: 0, minute: 3, second: 0
-  start port: 8005
-  k table nodes nums: 148
-  get peer nums: 13
+  pid: 14026
+  time: 2015-01-07 17:38:04
+  run time: day: 0, hour: 0, minute: 18, second: 6
+  start port: 65536
+  collect session num: 50
+  info hash nums from get peers: 0
+  torrent collection rate: 0.000000 /minute
+  current torrent count: 0
+  total torrent count: 38
 

@@ -207,7 +207,7 @@ class DHTCollector(object):
                 '''
                 其他DHT node向本node针对一条info-hash发起对接
                 '''
-                logging.info('dht_get_peers_alert: ' + alert.message())
+                logging.info('dht_get_peers_alert: ' + alert)
                 info_hash = alert.info_hash.to_string().encode('hex')
 
                 if info_hash in self._meta_list:

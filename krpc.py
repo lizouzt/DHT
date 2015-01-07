@@ -37,11 +37,17 @@ BOOTSTRAP_NODES = [
 ]
 
 PORT = 8005
-K = 8
+K = 4
 TID_LENGTH = 4
 KRPC_TIMEOUT = {'time': 20, 'timer': None}
 REBORN_TIME = {'time': 10 * 60, 'timer': None}
 KEEP_RUNNING = True
+
+
+#######################
+try_get_peers_infohash_list = []
+#######################
+
 
 #生成数字串
 #param [{init}] bytes 长度
@@ -114,7 +120,13 @@ class KRPC(object):
         '''
         再区分response type
         '''
-        self.find_node_handler(msg)
+        if msg["q"] == "get_peers":
+            self.peers_response_handler(msg, address)
+        elif msg["q"] == "announce_peer":
+            self.announce_response_handler(msg, address)
+        else:
+            self.find_node_handler(msg)
+
     def query_received(self, msg, address):
         try:
             self.actions[msg["q"]](msg, address)
@@ -148,11 +160,15 @@ class Client(KRPC):
             nodes = decode_nodes(msg["r"]["nodes"])
             for node in nodes:  
                 (nid, ip, port) = node  
-                if len(nid) != 20: continue  
+                if len(nid) != 20: continue
                 if nid == self.table.nid: continue  
                 self.find_node( (ip, port), nid )
         except KeyError:
             pass
+    def peers_response_handler(self, msg, address):
+        pass
+    def announce_response_handler(self, msg, address):
+        pass
     def joinDHT(self):
         for address in BOOTSTRAP_NODES:
             self.find_node(address)
@@ -170,12 +186,31 @@ class Client(KRPC):
         self.table.buckets = [ KBucket(0, 2**160) ]
         print 'REBORN!'
         timer(REBORN_TIME, self.reborn)
+    def send_get_peers(self, nid, info_hash):
+        nodes = self.table.buckets[randint(0, len( self.table.buckets )-1)].nodes
+        msg = {
+            "t": entropy(TID_LENGTH),
+            "y": "q",
+            "q": "get_peers",
+            "a": {
+                "id": None,
+                "info_hash": info_hash
+            }
+        }
+
+        for node in nodes:
+            msg['a']['id'] = node.nid
+            self.send_krpc(msg, (node.ip, node.port))
+
+        try_get_peers_infohash_list.push(info_hash)
+        logger.debug('send %d get_peers quest.' % len(nodes))
+
     def start(self):
         logger.info('START!')
         self.joinDHT()
         while True:
             try:
-                (data, address) = self.socket.recvfrom(2048)
+                (data, address) = self.socket.recvfrom(516)
                 msg = bdecode(data)
                 self.types[msg["y"]](msg, address)
             except Exception,e:
@@ -225,20 +260,6 @@ class Server(Client):
         except KeyError:
             pass
     def get_peers_received(self, msg, address):
-        '''
-        ####
-        peer_a, peer_b, filehash
-        ####
-        peer_a: q[get_peers]{id: peer_b.nid, info_hash: filehash}
-        ->
-        peer_b: r[get_peers]{id: peer_b.nid, token: peer_b_give_to_a_the_tokenstr, value: CompactIP-address/portinfo}
-                or
-                r[get_peers]{id: peer_b.nid, token: peer_b_give_to_a_the_tokenstr, nodes: '.......'}
-        ->
-        peer_a: q[announce_peer]{id: peer_b.nid, info_hash: filehash, token: peer_b_give_to_a_the_tokenstr, port: peer_a.file_receive_port}
-        ->
-        peer_b: r[announce_peer]{id: filehash}
-        '''
         try:
             infohash = msg["a"]["info_hash"]
             neighbors = self.table.get_neighbors(infohash)
@@ -254,14 +275,12 @@ class Server(Client):
             self.table.append(KNode(nid, *address))
             self.send_krpc(msg, address)
             self.infohash_from_getpeers_count += 1
-            #logger.info('get_peers_received: '+infohash.encode('hex'))
-            print 'get peer received: ' + infohash.encode('hex')
-	    self.find_node(address, nid)
+            self.find_node(address, nid)
         except KeyError:
             pass
+
     def announce_peer_received(self, msg, address):
         try:
-            logger.info('announce_peer_received: ' + str(msg))
             infohash = msg["a"]["info_hash"]
             nid = msg["a"]["id"]
             msg = {
@@ -275,6 +294,11 @@ class Server(Client):
             self.find_node(address, nid)
         except KeyError:
             pass
+
+        extra = msg['a']
+        if extra and extra['info_hash'] and extra['token']:
+            logger.info('announce_peer_received: ' + str(msg))
+            self.send_get_peeers(extra['info_hash'])
 
 class KTable(object):
     def __init__(self, nid):
@@ -334,7 +358,7 @@ class KTable(object):
         for bucket in self.buckets:
             c += len(bucket.nodes)
         return c
-    def __iter__(self):  
+    def __iter__(self):
         for bucket in self.buckets:  
             yield bucket
 
