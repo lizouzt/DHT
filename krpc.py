@@ -166,7 +166,14 @@ class Client(KRPC):
         except KeyError:
             pass
     def peers_response_handler(self, msg, address):
-        pass
+        data = json.parse(msg["r"])
+        if data["values"]:
+            #successd
+            pass
+        elif data["token"]:
+            #just neighbors
+            info_hash = try_get_peers_infohash_list[data["id"]]
+            info_hash && self.send_get_peers(info_hash, decode_nodes(data["nodes"]))
     def announce_response_handler(self, msg, address):
         pass
     def joinDHT(self):
@@ -186,8 +193,8 @@ class Client(KRPC):
         self.table.buckets = [ KBucket(0, 2**160) ]
         print 'REBORN!'
         timer(REBORN_TIME, self.reborn)
-    def send_get_peers(self, nid, info_hash):
-        nodes = self.table.buckets[randint(0, len( self.table.buckets )-1)].nodes
+    def send_get_peers(self, info_hash, neighbors=None):
+        nodes = neighbors or self.table.buckets[randint(0, len( self.table.buckets )-1)].nodes
         msg = {
             "t": entropy(TID_LENGTH),
             "y": "q",
@@ -201,8 +208,8 @@ class Client(KRPC):
         for node in nodes:
             msg['a']['id'] = node.nid
             self.send_krpc(msg, (node.ip, node.port))
+            try_get_peers_infohash_list["nid"] = info_hash
 
-        try_get_peers_infohash_list.push(info_hash)
         logger.debug('send %d get_peers quest.' % len(nodes))
 
     def start(self):
@@ -298,7 +305,7 @@ class Server(Client):
         extra = msg['a']
         if extra and extra['info_hash'] and extra['token']:
             logger.info('announce_peer_received: ' + str(msg))
-            self.send_get_peeers(extra['info_hash'])
+            self.send_get_peers(extra['info_hash'])
 
 class KTable(object):
     def __init__(self, nid):
