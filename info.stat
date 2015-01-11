@@ -1,11 +1,9 @@
 torrents:
-  pid: 14026
-  time: 2015-01-07 17:38:04
-  run time: day: 0, hour: 0, minute: 18, second: 6
-  start port: 65536
-  collect session num: 50
-  info hash nums from get peers: 0
-  torrent collection rate: 0.000000 /minute
-  current torrent count: 0
-  total torrent count: 38
+  pid: 1836
+  time: 2015-01-12 01:27:18
+  run time: day: 0, hour: 0, minute: 30, second: 0
+  start port: 8005
+  krpc table nodes nums: 0
+  get peers nums: 0
+  announce peer nums: 0
 

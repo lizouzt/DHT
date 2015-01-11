@@ -32,11 +32,11 @@ logger.addHandler(sh)
 BOOTSTRAP_NODES = [
     ('router.bittorrent.com', 6881),
     ('router.utorrent.com', 6881),
-    ('router.bitcomet.com', 6881),
     ('dht.transmissionbt.com', 6881)
 ]
 
 PORT = 8005
+BTDPORT = 8001
 K = 4
 TID_LENGTH = 4
 KRPC_TIMEOUT = {'time': 20, 'timer': None}
@@ -120,23 +120,22 @@ class KRPC(object):
         '''
         再区分response type
         '''
-        if msg["q"] == "get_peers":
-            self.peers_response_handler(msg, address)
-        elif msg["q"] == "announce_peer":
-            self.announce_response_handler(msg, address)
-        else:
-            self.find_node_handler(msg)
-
+        if "q" in msg:
+            if msg["q"] == "get_peers":
+                self.peers_response_handler(msg, address)
+            elif msg["q"] == "announce_peer":
+                self.announce_response_handler(msg, address)
+        self.find_node_handler(msg)
     def query_received(self, msg, address):
         try:
             self.actions[msg["q"]](msg, address)
         except KeyError:
-            pass
+            print 'query_received error'
     def send_krpc(self, msg, address):
         try:
             self.socket.sendto(bencode(msg), address)
         except Exception,e:
-            logger.error('socket sendto error: '+str(e))
+            logger.error('socket sendto error: '+str(e)+'*****'+str(address))
 class Client(KRPC):
     def __init__(self):
         timer(KRPC_TIMEOUT, self.fill_the_buckets)
@@ -154,11 +153,11 @@ class Client(KRPC):
             "q": "find_node",
             "a": {"id": nid, "target": random_id()}
         }
-        self.send_krpc(msg, address)  
+        self.send_krpc(msg, address)
     def find_node_handler(self, msg):
         try:
             nodes = decode_nodes(msg["r"]["nodes"])
-            for node in nodes:  
+            for node in nodes:
                 (nid, ip, port) = node  
                 if len(nid) != 20: continue
                 if nid == self.table.nid: continue  
@@ -166,22 +165,28 @@ class Client(KRPC):
         except KeyError:
             pass
     def peers_response_handler(self, msg, address):
-        data = json.parse(msg["r"])
-        if data["values"]:
-            #successd
-            pass
-        elif data["token"]:
-            #just neighbors
+        try:
+            data = json.parse(msg["r"])
             info_hash = try_get_peers_infohash_list[data["id"]]
-            info_hash && self.send_get_peers(info_hash, decode_nodes(data["nodes"]))
+        except KeyError:
+            return -1
+
+        if data["values"]:
+            logger.info('peers_response----token: ' + msg)
+            info_hash and self.send_annouce_peer(data["id"],info_hash,address,msg["t"],data["token"])
+        elif data["token"]:
+            logger.info('peers_response----neighbors: ' + msg)
+            #just neighbors
+            info_hash and self.send_get_peers(info_hash, decode_nodes(data["nodes"]))
     def announce_response_handler(self, msg, address):
-        pass
+        logger.info('announce_response_handler: '+msg)
+        print 'announce_r: ',msg
     def joinDHT(self):
         for address in BOOTSTRAP_NODES:
             self.find_node(address)
     def fill_the_buckets(self):
         if len( self.table.buckets ) < 2:
-            print 'fill_the_buckets'
+            print 'fill_the_buckets','*****nodes nums: ',self.table.get_nodes_count()
             self.joinDHT()
 
         timer(KRPC_TIMEOUT, self.fill_the_buckets)
@@ -211,17 +216,30 @@ class Client(KRPC):
             try_get_peers_infohash_list["nid"] = info_hash
 
         logger.debug('send %d get_peers quest.' % len(nodes))
-
+    def send_annouce_peer(self, nid, info_hash, address, t=None, token='', port=BTDPORT):
+        t = t or entropy(TID_LENGTH)
+        msg = {
+            "t": t,
+            "y": "q",
+            "q": "announce_peer",
+            "a": {
+                "id": nid,
+                "info_hash": info_hash,
+                "port": port,
+                "token": token
+            }
+        }
+        self.send_krpc(msg, address)
     def start(self):
         logger.info('START!')
         self.joinDHT()
         while True:
             try:
-                (data, address) = self.socket.recvfrom(516)
+                (data, address) = self.socket.recvfrom(1024)
                 msg = bdecode(data)
                 self.types[msg["y"]](msg, address)
             except Exception,e:
-		print 'receive error: ','----',str(e)
+                print 'receive error: ',e,'----',str(msg)
     def stop(self):
         KRPC_TIMEOUT['timer'] and KRPC_TIMEOUT['timer'].cancel()
         REBORN_TIME['timer'] and REBORN_TIME['timer'].cancel()
@@ -264,8 +282,8 @@ class Server(Client):
             self.table.append(KNode(nid, *address))
             self.send_krpc(msg, address)
             self.find_node(address, nid)
-        except KeyError:
-            pass
+        except KeyError,e:
+            print 'find_node_received error: ',e
     def get_peers_received(self, msg, address):
         try:
             infohash = msg["a"]["info_hash"]
@@ -316,7 +334,8 @@ class KTable(object):
         try:
             bucket = self.buckets[index]
             bucket.append(node)
-        except IndexError:
+        except IndexError,e:
+            print 'append: ',e
             return
         except BucketFull:
             '''
