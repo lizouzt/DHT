@@ -35,7 +35,7 @@ BOOTSTRAP_NODES = [
     ('dht.transmissionbt.com', 6881)
 ]
 
-PORT = 8005
+PORT = 8006
 BTDPORT = 8001
 K = 4
 TID_LENGTH = 4
@@ -45,7 +45,7 @@ KEEP_RUNNING = True
 
 
 #######################
-try_get_peers_infohash_list = []
+try_get_peers_infohash_list = {}
 #######################
 
 
@@ -122,20 +122,22 @@ class KRPC(object):
         '''
         if "q" in msg:
             if msg["q"] == "get_peers":
+                print 'get_peers_response'
                 self.peers_response_handler(msg, address)
             elif msg["q"] == "announce_peer":
+                print 'announce_peer_response'
                 self.announce_response_handler(msg, address)
         self.find_node_handler(msg)
     def query_received(self, msg, address):
         try:
             self.actions[msg["q"]](msg, address)
         except KeyError:
-            print 'query_received error'
+            print 'query_received error', msg["q"]
     def send_krpc(self, msg, address):
         try:
             self.socket.sendto(bencode(msg), address)
         except Exception,e:
-            logger.error('socket sendto error: '+str(e)+'*****'+str(address))
+            logger.error('socket sendto error: '+str(e)+'*****'+msg['y']+msg['q'])
 class Client(KRPC):
     def __init__(self):
         timer(KRPC_TIMEOUT, self.fill_the_buckets)
@@ -209,7 +211,8 @@ class Client(KRPC):
                 "info_hash": info_hash
             }
         }
-
+	
+	print 'send_get_peers with nums:',len(nodes)
         for node in nodes:
             msg['a']['id'] = node.nid
             self.send_krpc(msg, (node.ip, node.port))
@@ -308,22 +311,27 @@ class Server(Client):
         try:
             infohash = msg["a"]["info_hash"]
             nid = msg["a"]["id"]
-            msg = {
+            remsg = {
                 "t": msg["t"],
                 "y": "r",
                 "r": {"id": self.get_neighbor(infohash)}
             }
             self.table.append(KNode(nid, *address))
-            self.send_krpc(msg, address)
+            self.send_krpc(remsg, address)
             self.infohash_from_announcepeers_count += 1
             self.find_node(address, nid)
-        except KeyError:
-            pass
+            print 'announce_peer_received'
 
-        extra = msg['a']
-        if extra and extra['info_hash'] and extra['token']:
-            logger.info('announce_peer_received: ' + str(msg))
-            self.send_get_peers(extra['info_hash'])
+            extra = msg['a']
+            if 'info_hash' and 'token' in extra:
+            	self.send_get_peers(extra['info_hash'])
+	    else:
+	    	print 'received_useless_annouce',msg
+	except KeyError, e:
+            print 'announce_peer_received with error: ', str(e)
+            pass
+	except Exception as e:
+	   print 'announce_extra_error:',str(e)
 
 class KTable(object):
     def __init__(self, nid):
