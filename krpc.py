@@ -120,24 +120,25 @@ class KRPC(object):
         '''
         再区分response type
         '''
-        if "q" in msg:
-            if msg["q"] == "get_peers":
-                print 'get_peers_response'
-                self.peers_response_handler(msg, address)
-            elif msg["q"] == "announce_peer":
-                print 'announce_peer_response'
-                self.announce_response_handler(msg, address)
+        if 'r' in msg:
+	    if 'values' or 'nodes' in msg['r']:
+            	self.peers_response_handler(msg, address)
+            elif 'id' in msg['r']:
+            	self.announce_response_handler(msg, address)
+	    else:
+		print 'response: ',msg
+
         self.find_node_handler(msg)
     def query_received(self, msg, address):
         try:
             self.actions[msg["q"]](msg, address)
         except KeyError:
-            print 'query_received error', msg["q"]
+	    pass
     def send_krpc(self, msg, address):
         try:
             self.socket.sendto(bencode(msg), address)
         except Exception,e:
-            logger.error('socket sendto error: '+str(e)+'*****'+msg['y']+msg['q'])
+	    pass
 class Client(KRPC):
     def __init__(self):
         timer(KRPC_TIMEOUT, self.fill_the_buckets)
@@ -167,19 +168,19 @@ class Client(KRPC):
         except KeyError:
             pass
     def peers_response_handler(self, msg, address):
-        try:
-            data = json.parse(msg["r"])
-            info_hash = try_get_peers_infohash_list[data["id"]]
-        except KeyError:
-            return -1
+        data = msg["r"]
+	if data['id'] in try_get_peers_infohash_list:
+	    info_hash = try_get_peers_infohash_list[data['id']]
+	else:
+	    print len(try_get_peers_infohash_list),try_get_peers_infohash_list,data
+            return
 
-        if data["values"]:
-            logger.info('peers_response----token: ' + msg)
-            info_hash and self.send_annouce_peer(data["id"],info_hash,address,msg["t"],data["token"])
-        elif data["token"]:
-            logger.info('peers_response----neighbors: ' + msg)
-            #just neighbors
-            info_hash and self.send_get_peers(info_hash, decode_nodes(data["nodes"]))
+	if 'values' in data:
+            logger.info('get_peers_response---success: ' + msg)
+            self.send_annouce_peer(data["id"],info_hash,address,msg["t"],data["token"])
+        elif 'nodes' in data:
+            logger.info('get_peers_response----neighbors: ' + msg)
+            self.send_get_peers(info_hash, decode_nodes(data["nodes"]))
     def announce_response_handler(self, msg, address):
         logger.info('announce_response_handler: '+msg)
         print 'announce_r: ',msg
@@ -212,13 +213,15 @@ class Client(KRPC):
             }
         }
 	
-	print 'send_get_peers with nums:',len(nodes)
-        for node in nodes:
-            msg['a']['id'] = node.nid
-            self.send_krpc(msg, (node.ip, node.port))
-            try_get_peers_infohash_list["nid"] = info_hash
-
-        logger.debug('send %d get_peers quest.' % len(nodes))
+        try:
+            for node in nodes:
+            	msg['a']['id'] = node.nid
+            	self.send_krpc(msg, (node.ip, node.port))
+            	try_get_peers_infohash_list[node.nid] = info_hash
+            logger.info('send %d get_peers quest.' % len(nodes))
+        except Exception as e:
+            print 'send_get_peers_error:',e
+	
     def send_annouce_peer(self, nid, info_hash, address, t=None, token='', port=BTDPORT):
         t = t or entropy(TID_LENGTH)
         msg = {
@@ -242,7 +245,7 @@ class Client(KRPC):
                 msg = bdecode(data)
                 self.types[msg["y"]](msg, address)
             except Exception,e:
-                print 'receive error: ',e,'----',str(msg)
+                pass
     def stop(self):
         KRPC_TIMEOUT['timer'] and KRPC_TIMEOUT['timer'].cancel()
         REBORN_TIME['timer'] and REBORN_TIME['timer'].cancel()
@@ -320,7 +323,6 @@ class Server(Client):
             self.send_krpc(remsg, address)
             self.infohash_from_announcepeers_count += 1
             self.find_node(address, nid)
-            print 'announce_peer_received'
 
             extra = msg['a']
             if 'info_hash' and 'token' in extra:
