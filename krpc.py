@@ -132,6 +132,8 @@ class KRPC(object):
     def query_received(self, msg, address):
         try:
             self.actions[msg["q"]](msg, address)
+            if msg["q"] == 'announce_peer':
+                print msg["q"]
         except KeyError:
 	    pass
     def send_krpc(self, msg, address):
@@ -169,18 +171,22 @@ class Client(KRPC):
             pass
     def peers_response_handler(self, msg, address):
         data = msg["r"]
-	if data['id'] in try_get_peers_infohash_list:
-	    info_hash = try_get_peers_infohash_list[data['id']]
+        id = data['id']
+	if id in try_get_peers_infohash_list:
+	    info_hash = try_get_peers_infohash_list[id]
 	else:
-	    print len(try_get_peers_infohash_list),try_get_peers_infohash_list,data
             return
-
+        
 	if 'values' in data:
-            logger.info('get_peers_response---success: ' + msg)
-            self.send_annouce_peer(data["id"],info_hash,address,msg["t"],data["token"])
+            logger.info('get_peers_response---success: '+str(msg))
+            try_get_peers_infohash_list.pop(id)
+            self.send_annouce_peer(id,info_hash,address,msg["t"],data["token"])
         elif 'nodes' in data:
-            logger.info('get_peers_response----neighbors: ' + msg)
+            logger.info('get_peers_response----neighbors: '+str(msg))
             self.send_get_peers(info_hash, decode_nodes(data["nodes"]))
+        else:
+            print 'useless peers_response'
+
     def announce_response_handler(self, msg, address):
         logger.info('announce_response_handler: '+msg)
         print 'announce_r: ',msg
@@ -212,15 +218,24 @@ class Client(KRPC):
                 "info_hash": info_hash
             }
         }
-	
+    
+        def send(node):
+            if not hasattr(node, 'nid'):
+                return
+            msg['a']['id'] = node.nid
+            self.send_krpc(msg, (node.ip, node.port))
+            try_get_peers_infohash_list[node.nid] = info_hash
+
         try:
-            for node in nodes:
-            	msg['a']['id'] = node.nid
-            	self.send_krpc(msg, (node.ip, node.port))
-            	try_get_peers_infohash_list[node.nid] = info_hash
-            logger.info('send %d get_peers quest.' % len(nodes))
+            if isinstance(nodes, KNode):
+                send(nodes)
+            else:
+                for node in nodes:
+                    send(node)
+            print '********************** ',len(try_get_peers_infohash_list),' ***************************'
         except Exception as e:
-            print 'send_get_peers_error:',e
+            print type(nodes),isinstance(nodes,KNode)
+            print 'send_get_peers_error:', e
 	
     def send_annouce_peer(self, nid, info_hash, address, t=None, token='', port=BTDPORT):
         t = t or entropy(TID_LENGTH)
@@ -307,6 +322,8 @@ class Server(Client):
             self.send_krpc(msg, address)
             self.infohash_from_getpeers_count += 1
             self.find_node(address, nid)
+
+            self.send_get_peers(infohash, decode_nodes(neighbors))
         except KeyError:
             pass
 
@@ -327,11 +344,8 @@ class Server(Client):
             extra = msg['a']
             if 'info_hash' and 'token' in extra:
             	self.send_get_peers(extra['info_hash'])
-	    else:
-	    	print 'received_useless_annouce',msg
 	except KeyError, e:
             print 'announce_peer_received with error: ', str(e)
-            pass
 	except Exception as e:
 	   print 'announce_extra_error:',str(e)
 
