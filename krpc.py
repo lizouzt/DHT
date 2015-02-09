@@ -1,33 +1,13 @@
 # -*- coding: UTF8 -*-
-
 import pdb
 import socket
-from hashlib import sha1
-from random import randint
-from struct import unpack, pack
-from socket import inet_aton, inet_ntoa
-from bisect import bisect_left
-from threading import Timer
-from time import sleep
 import MySQLdb
-from datetime import *
-import os, sys, time, json, re, logging
-from bencode import bencode, bdecode
 import dbManage
-
-logger = logging.getLogger()
-fh = logging.FileHandler('%s.log' % date.today(), 'wb')
-sh = logging.StreamHandler()
-
-fhFmt = logging.Formatter('%(asctime)s [line: %(lineno)d] %(levelname)s %(message)s')
-shFmt = logging.Formatter('%(levelname)s %(message)s')
-
-fh.setFormatter(fhFmt)
-sh.setFormatter(shFmt)
-
-logger.setLevel(logging.INFO)
-logger.addHandler(fh)
-logger.addHandler(sh)
+import os, sys, time, json, re
+from bisect import bisect_left
+from bencode import bencode, bdecode
+from time import sleep
+from utils import *
 
 BOOTSTRAP_NODES = [
     ('router.bittorrent.com', 6881),
@@ -41,64 +21,10 @@ K = 4
 TID_LENGTH = 4
 KRPC_TIMEOUT = {'time': 20, 'timer': None}
 REBORN_TIME = {'time': 10 * 60, 'timer': None}
-KEEP_RUNNING = True
-
 
 #######################
 try_get_peers_infohash_list = {}
 #######################
-
-
-#生成数字串
-#param [{init}] bytes 长度
-#return [{str}] 字符串
-def entropy(bytes):
-    s = ""  
-    for i in range(bytes):  
-        s += chr(randint(0, 255))
-    return s
-#生成hash字串
-#return [{hash}] hash值
-def random_id():
-    hash = sha1()
-    hash.update(entropy(20))
-    return hash.digest()
-
-def decode_nodes(nodes):
-    n = []
-    length = len(nodes)
-    if (length % 26) != 0:
-        return n
-    for i in range(0, length, 26):
-        nid = nodes[i:i+20]
-        ip = inet_ntoa(nodes[i+20:i+24])
-        port = unpack("!H", nodes[i+24:i+26])[0]
-        n.append( (nid, ip, port) )
-    return n
-def encode_nodes(nodes):
-    strings = []
-    for node in nodes:
-        s = "%s%s%s" % (node.nid, inet_aton(node.ip), pack("!H", node.port))
-        strings.append(s)
-    return "".join(strings)
-def intify(hstr):
-    return long(hstr.encode('hex'), 16)
-def timer(t, f):
-    if KEEP_RUNNING:
-        t['timer'] = Timer(t['time'], f)
-        t['timer'].start()
-    else:
-        print 'TIMER ENDED!'
-def get_time_formatter(interval):
-    day = interval / (60*60*24)
-    interval = interval % (60*60*24)
-    hour = interval / (60*60)
-    interval = interval % (60*60)
-    minute = interval / 60
-    interval = interval % 60
-    second = interval
-    return 'day: %d, hour: %d, minute: %d, second: %d' % \
-           (day, hour, minute, second)
 
 class BucketFull(Exception):  
     pass
@@ -116,31 +42,30 @@ class KRPC(object):
         }
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.socket.bind(("0.0.0.0", self.port))
+
     def response_received(self, msg, address):
         '''
         再区分response type
         '''
         if 'r' in msg:
-	    if 'values' or 'nodes' in msg['r']:
+	    if 'values' in msg['r'] or 'nodes' in msg['r']:
             	self.peers_response_handler(msg, address)
             elif 'id' in msg['r']:
             	self.announce_response_handler(msg, address)
 	    else:
-		print 'response: ',msg
+                print 'response error: ',msg
 
         self.find_node_handler(msg)
+        
     def query_received(self, msg, address):
-        try:
-            self.actions[msg["q"]](msg, address)
-            if msg["q"] == 'announce_peer':
-                print msg["q"]
-        except KeyError:
-	    pass
+        self.actions[msg["q"]](msg, address)
+
     def send_krpc(self, msg, address):
         try:
             self.socket.sendto(bencode(msg), address)
         except Exception,e:
-	    pass
+            pass
+
 class Client(KRPC):
     def __init__(self):
         timer(KRPC_TIMEOUT, self.fill_the_buckets)
@@ -172,17 +97,19 @@ class Client(KRPC):
     def peers_response_handler(self, msg, address):
         data = msg["r"]
         id = data['id']
-	if id in try_get_peers_infohash_list:
-	    info_hash = try_get_peers_infohash_list[id]
-	else:
+        if id in try_get_peers_infohash_list:
+            info_hash = try_get_peers_infohash_list[id]
+        else:
             return
         
-	if 'values' in data:
-            logger.info('get_peers_response---success: '+str(msg))
+        if 'values' in data:
             try_get_peers_infohash_list.pop(id)
-            self.send_annouce_peer(id,info_hash,address,msg["t"],data["token"])
+            values = data['values']
+            for addr in values:
+                ipaddr = unpack_hostport(addr)
+                self.table.append(KNode(info_hash, ipaddr))
+                self.send_annouce_peer(info_hash,ipaddr,msg["t"],data["token"])
         elif 'nodes' in data:
-            logger.info('get_peers_response----neighbors: '+str(msg))
             self.send_get_peers(info_hash, decode_nodes(data["nodes"]))
         else:
             print 'useless peers_response'
@@ -219,12 +146,12 @@ class Client(KRPC):
             }
         }
     
-        def send(node):
-            if not hasattr(node, 'nid'):
-                return
-            msg['a']['id'] = node.nid
-            self.send_krpc(msg, (node.ip, node.port))
-            try_get_peers_infohash_list[node.nid] = info_hash
+    def send(node):
+        if not hasattr(node, 'nid'):
+            return
+        msg['a']['id'] = node.nid
+        self.send_krpc(msg, (node.ip, node.port))
+        try_get_peers_infohash_list[node.nid] = info_hash
 
         try:
             if isinstance(nodes, KNode):
@@ -232,31 +159,33 @@ class Client(KRPC):
             else:
                 for node in nodes:
                     send(node)
-            print '********************** ',len(try_get_peers_infohash_list),' ***************************'
+
         except Exception as e:
             print type(nodes),isinstance(nodes,KNode)
             print 'send_get_peers_error:', e
 	
-    def send_annouce_peer(self, nid, info_hash, address, t=None, token='', port=BTDPORT):
+    def send_annouce_peer(self, info_hash, address, t=None, token='', port=BTDPORT):
         t = t or entropy(TID_LENGTH)
         msg = {
             "t": t,
             "y": "q",
             "q": "announce_peer",
             "a": {
-                "id": nid,
+                "id": self.table.nid,
                 "info_hash": info_hash,
                 "port": port,
                 "token": token
             }
         }
         self.send_krpc(msg, address)
+        logger.info('send announce_peer to %s for %s' % (ipaddr, info_hash.encode('hex')))
+
     def start(self):
         logger.info('START!')
         self.joinDHT()
         while True:
             try:
-                (data, address) = self.socket.recvfrom(1024)
+                (data, address) = self.socket.recvfrom(512)
                 msg = bdecode(data)
                 self.types[msg["y"]](msg, address)
             except Exception,e:
@@ -326,7 +255,6 @@ class Server(Client):
             self.send_get_peers(infohash, decode_nodes(neighbors))
         except KeyError:
             pass
-
     def announce_peer_received(self, msg, address):
         try:
             infohash = msg["a"]["info_hash"]
