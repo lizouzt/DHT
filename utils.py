@@ -26,6 +26,27 @@ logger.addHandler(sh)
 
 KEEP_RUNNING = True
 
+def generate_handshake(info_hash, peer_id):
+    """ Returns a handshake. """
+
+    protocol_id = "BitTorrent protocol"
+    len_id = str(len(protocol_id))
+    reserved = "00000000"
+
+    return len_id + protocol_id + reserved + info_hash + peer_id
+
+def send_recv_handshake(handshake, host, port):
+    """ Sends a handshake, returns the data we get back. """
+
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    s.connect((host, port))
+    s.send(handshake)
+
+    data = s.recv(len(handshake))
+    s.close()
+
+    return data
+
 #生成数字串
 #param [{init}] bytes 长度
 #return [{str}] 字符串

@@ -3,6 +3,7 @@ import pdb
 import socket
 import MySQLdb
 import dbManage
+import hashlib
 import os, sys, time, json, re
 from bisect import bisect_left
 from bencode import bencode, bdecode
@@ -44,19 +45,17 @@ class KRPC(object):
         self.socket.bind(("0.0.0.0", self.port))
 
     def response_received(self, msg, address):
-        '''
-        再区分response type
-        '''
         if 'r' in msg:
-	    if 'values' in msg['r'] or 'nodes' in msg['r']:
+            if 'q' in msg and msg['q'] == 'find_node':
+		print 'find_response'
+                self.find_node_handler(msg)
+	    elif 'values' in msg['r'] or 'nodes' in msg['r']:
             	self.peers_response_handler(msg, address)
             elif 'id' in msg['r']:
             	self.announce_response_handler(msg, address)
 	    else:
                 print 'response error: ',msg
 
-        self.find_node_handler(msg)
-        
     def query_received(self, msg, address):
         self.actions[msg["q"]](msg, address)
 
@@ -75,13 +74,13 @@ class Client(KRPC):
         '''
         say hi
         '''
-        nid = self.get_neighbor(nid) if nid else self.table.nid
+        target = self.get_neighbor(nid) if nid else self.table.nid
         tid = entropy(TID_LENGTH)
         msg = {
             "t": tid,
             "y": "q",
             "q": "find_node",
-            "a": {"id": nid, "target": random_id()}
+            "a": {"id": self.table.nid, "target": target}
         }
         self.send_krpc(msg, address)
     def find_node_handler(self, msg):
@@ -96,27 +95,25 @@ class Client(KRPC):
             pass
     def peers_response_handler(self, msg, address):
         data = msg["r"]
-        id = data['id']
-        if id in try_get_peers_infohash_list:
-            info_hash = try_get_peers_infohash_list[id]
+        nid = data['id']
+        if nid in try_get_peers_infohash_list:
+            info_hash = try_get_peers_infohash_list[nid]
         else:
             return
-        
-        if 'values' in data:
-            try_get_peers_infohash_list.pop(id)
+	
+        if 'nodes' in data:
+            self.send_get_peers(info_hash, decode_nodes(data["nodes"]))
+        elif 'values' in data:
+            try_get_peers_infohash_list.pop(nid)
             values = data['values']
             for addr in values:
                 ipaddr = unpack_hostport(addr)
-                self.table.append(KNode(info_hash, ipaddr))
-                self.send_annouce_peer(info_hash,ipaddr,msg["t"],data["token"])
-        elif 'nodes' in data:
-            self.send_get_peers(info_hash, decode_nodes(data["nodes"]))
+                self.send_announce_peer(info_hash,ipaddr,msg["t"],data["token"])
         else:
             print 'useless peers_response'
 
     def announce_response_handler(self, msg, address):
-        logger.info('announce_response_handler: '+msg)
-        print 'announce_r: ',msg
+        logger.info('announce_response_handler: %s' % msg)
     def joinDHT(self):
         for address in BOOTSTRAP_NODES:
             self.find_node(address)
@@ -141,18 +138,16 @@ class Client(KRPC):
             "y": "q",
             "q": "get_peers",
             "a": {
-                "id": None,
+                "id": self.table.nid,
                 "info_hash": info_hash
             }
         }
     
-    def send(node):
-        if not hasattr(node, 'nid'):
-            return
-        msg['a']['id'] = node.nid
-        self.send_krpc(msg, (node.ip, node.port))
-        try_get_peers_infohash_list[node.nid] = info_hash
-
+        def send(node):
+            if not hasattr(node, 'nid'):
+                return
+            self.send_krpc(msg, (node.ip, node.port))
+            try_get_peers_infohash_list[node.nid] = info_hash
         try:
             if isinstance(nodes, KNode):
                 send(nodes)
@@ -164,21 +159,25 @@ class Client(KRPC):
             print type(nodes),isinstance(nodes,KNode)
             print 'send_get_peers_error:', e
 	
-    def send_annouce_peer(self, info_hash, address, t=None, token='', port=BTDPORT):
+    def send_announce_peer(self, info_hash, address, t=None, token='', port=BTDPORT):
         t = t or entropy(TID_LENGTH)
-        msg = {
+	msg = {
             "t": t,
             "y": "q",
             "q": "announce_peer",
             "a": {
                 "id": self.table.nid,
                 "info_hash": info_hash,
+		"implied_port": 1,
                 "port": port,
                 "token": token
             }
         }
-        self.send_krpc(msg, address)
-        logger.info('send announce_peer to %s for %s' % (ipaddr, info_hash.encode('hex')))
+	try:
+            self.send_krpc(msg, address)
+            logger.info('send announce_peer to %s for %s' % (address, info_hash.encode('hex')))
+	except Exception as e:
+	    print 'send_announce_peer error: ',e
 
     def start(self):
         logger.info('START!')
