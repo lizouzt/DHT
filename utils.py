@@ -2,7 +2,6 @@
 import os
 import pdb
 import socket
-import logging
 from datetime import date
 from socket import inet_aton, inet_ntoa
 from struct import unpack, pack
@@ -10,42 +9,7 @@ from hashlib import sha1
 from random import randint
 from threading import Timer
 
-logger = logging.getLogger()
-fh = logging.FileHandler('%s.log' % date.today(), 'wb')
-sh = logging.StreamHandler()
-
-fhFmt = logging.Formatter('%(asctime)s [line: %(lineno)d] %(levelname)s %(message)s')
-shFmt = logging.Formatter('%(levelname)s %(message)s')
-
-fh.setFormatter(fhFmt)
-sh.setFormatter(shFmt)
-
-logger.setLevel(logging.INFO)
-logger.addHandler(fh)
-logger.addHandler(sh)
-
 KEEP_RUNNING = True
-
-def generate_handshake(info_hash, peer_id):
-    """ Returns a handshake. """
-
-    protocol_id = "BitTorrent protocol"
-    len_id = str(len(protocol_id))
-    reserved = "00000000"
-
-    return len_id + protocol_id + reserved + info_hash + peer_id
-
-def send_recv_handshake(handshake, host, port):
-    """ Sends a handshake, returns the data we get back. """
-
-    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    s.connect((host, port))
-    s.send(handshake)
-
-    data = s.recv(len(handshake))
-    s.close()
-
-    return data
 
 #生成数字串
 #param [{init}] bytes 长度

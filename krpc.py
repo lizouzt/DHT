@@ -4,11 +4,29 @@ import socket
 import MySQLdb
 import dbManage
 import hashlib
+import logging
 import os, sys, time, json, re
+import threading
+from datetime import date
 from bisect import bisect_left
 from bencode import bencode, bdecode
 from time import sleep
 from utils import *
+from getTorrent import Peer
+
+logger = logging.getLogger()
+fh = logging.FileHandler('%s.log' % date.today(), 'wb')
+sh = logging.StreamHandler()
+
+fhFmt = logging.Formatter('%(asctime)s [line: %(lineno)d] %(levelname)s %(message)s')
+shFmt = logging.Formatter('%(levelname)s %(message)s')
+
+fh.setFormatter(fhFmt)
+sh.setFormatter(shFmt)
+
+logger.setLevel(logging.INFO)
+logger.addHandler(fh)
+logger.addHandler(sh)
 
 BOOTSTRAP_NODES = [
     ('router.bittorrent.com', 6881),
@@ -18,7 +36,7 @@ BOOTSTRAP_NODES = [
 
 PORT = 8006
 BTDPORT = 8001
-K = 4
+K = 8
 TID_LENGTH = 4
 KRPC_TIMEOUT = {'time': 20, 'timer': None}
 REBORN_TIME = {'time': 10 * 60, 'timer': None}
@@ -26,6 +44,8 @@ REBORN_TIME = {'time': 10 * 60, 'timer': None}
 #######################
 try_get_peers_infohash_list = {}
 #######################
+
+peer = Peer(BTDPORT)
 
 class BucketFull(Exception):  
     pass
@@ -114,6 +134,12 @@ class Client(KRPC):
 
     def announce_response_handler(self, msg, address):
         logger.info('announce_response_handler: %s' % msg)
+        info_hash = msg['r']['id']
+        peer.register_peer(address[0], address[1], info_hash)
+        # s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        # s.connect('0.0.0.0', BTDPORT)
+        # s.send(json.dump({'host': address[0], 'port': port, 'info_hash': info_hash}))
+
     def joinDHT(self):
         for address in BOOTSTRAP_NODES:
             self.find_node(address)
@@ -180,8 +206,8 @@ class Client(KRPC):
 	    print 'send_announce_peer error: ',e
 
     def start(self):
-        logger.info('START!')
         self.joinDHT()
+        print 'Crawler Start.'
         while True:
             try:
                 (data, address) = self.socket.recvfrom(512)
@@ -193,7 +219,7 @@ class Client(KRPC):
         KRPC_TIMEOUT['timer'] and KRPC_TIMEOUT['timer'].cancel()
         REBORN_TIME['timer'] and REBORN_TIME['timer'].cancel()
         s.socket.close()
-        print '\nSOCKET CLOSED!'
+        print 'Crawler closed.'
 
 class Server(Client):
     def __init__(self, master, table, port=8006):
@@ -411,9 +437,28 @@ if __name__ == '__main__':
         # m = dbManage.DBManage()
         m = object
         s = Server(Master(m,stat_file), KTable(random_id()), PORT)
-        s.start()
-    except KeyboardInterrupt, e:
+
+        tp = threading.Thread(target = peer.start)
+        ts = threading.Thread(target = s.start)
+        tp.start()
+        ts.start()
+
+        while True:
+            time.sleep(0.1)
+    except KeyboardInterrupt:
         KEEP_RUNNING = False
         s.stop()
+        peer.stop()
+        tp.join()
+        ts.join()
         logger.info('STOPED!')
         exit()
+    except Exception, e:
+        print 'Service Error: ',e
+    #     KEEP_RUNNING = False
+    #     s.stop()
+    #     peer.stop()
+    #     tp.join()
+    #     ts.join()
+    #     logger.info('STOPED!')
+    #     exit()
