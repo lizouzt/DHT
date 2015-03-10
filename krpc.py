@@ -6,7 +6,6 @@ import dbManage
 import hashlib
 import logging
 import os, sys, time, json, re
-import threading
 from datetime import date
 from bisect import bisect_left
 from bencode import bencode, bdecode
@@ -14,7 +13,7 @@ from time import sleep
 from utils import *
 from getTorrent import Peer
 
-logger = logging.getLogger()
+logger = logging.getLogger('dht')
 fh = logging.FileHandler('%s.log' % date.today(), 'wb')
 sh = logging.StreamHandler()
 
@@ -135,7 +134,10 @@ class Client(KRPC):
     def announce_response_handler(self, msg, address):
         logger.info('announce_response_handler: %s' % msg)
         info_hash = msg['r']['id']
-        peer.register_peer(address[0], address[1], info_hash)
+	try:
+            peer.register_peer(address[0], address[1], info_hash, self.table.nid)
+	except Exception,e:
+	    print 'register error: ',e
         # s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         # s.connect('0.0.0.0', BTDPORT)
         # s.send(json.dump({'host': address[0], 'port': port, 'info_hash': info_hash}))
@@ -201,7 +203,7 @@ class Client(KRPC):
         }
 	try:
             self.send_krpc(msg, address)
-            logger.info('send announce_peer to %s for %s' % (address, info_hash.encode('hex')))
+            #logger.info('send announce_peer to %s for %s' % (address, info_hash.encode('hex')))
 	except Exception as e:
 	    print 'send_announce_peer error: ',e
 
@@ -432,25 +434,19 @@ class Master(object):
             logger.info('output_stat error: ' + str(err))
 
 if __name__ == '__main__':
-    stat_file = sys.argv[1] if len(sys.argv) >= 2 else 'info.stat'
     try:
-        # m = dbManage.DBManage()
-        m = object
-        s = Server(Master(m,stat_file), KTable(random_id()), PORT)
-
-        tp = threading.Thread(target = peer.start)
-        ts = threading.Thread(target = s.start)
-        tp.start()
-        ts.start()
-
-        while True:
-            time.sleep(0.1)
+	stat_file = sys.argv[1] if len(sys.argv) >= 2 else 'info.stat'
+    	# m = dbManage.DBManage()
+    	m = object
+    	s = Server(Master(m,stat_file), KTable(random_id()), PORT)
+    	#tp = threading.Thread(target = peer.start)
+    	#ts = threading.Thread(target = s.start)
+    	#tp.start()
+    	s.start()
     except KeyboardInterrupt:
         KEEP_RUNNING = False
         s.stop()
-        peer.stop()
-        tp.join()
-        ts.join()
+	#ts.join()
         logger.info('STOPED!')
         exit()
     except Exception, e:

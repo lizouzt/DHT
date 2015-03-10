@@ -6,7 +6,7 @@ import logging
 import os, sys, time, json, re
 from datetime import date
 
-logger = logging.getLogger()
+peerLogger = logging.getLogger('peer')
 fh = logging.FileHandler('tracker-%s.log' % date.today(), 'wb')
 sh = logging.StreamHandler()
 
@@ -16,26 +16,40 @@ shFmt = logging.Formatter('%(levelname)s %(message)s')
 fh.setFormatter(fhFmt)
 sh.setFormatter(shFmt)
 
-logger.setLevel(logging.INFO)
-logger.addHandler(fh)
-logger.addHandler(sh)
+peerLogger.setLevel(logging.INFO)
+peerLogger.addHandler(fh)
+peerLogger.addHandler(sh)
+
+TO = 20
+DEBUG = True
+FLAGS = '00000000'
+protocol_name = 'BitTorrent protocol'
 
 class Peer_Connection(object):
-    def __init__(self, sock, addr):
+    def __init__(self, host, port):
         self._buffer = ""
-        self.sock = sock
-        self.addr = addr
+	self.sock = None
+        self.addr = (host, port)
         self.am_interested = False
         self.am_blocking = True
         self.peer_interested = False
         self.peer_blocking = True
         self.honeypot_name = ""
         pass
+    
+    def connect(self):
+	try:
+	    self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)    
+	    self.sock.connect(self.addr)
+	except Exception as e:
+	    peerLogger.info('Peer_connect failed: %s. %s' % (self.addr, str(e)))
+	    return None
+	return self.sock
 
     def data_come_in(self, length):
         while True:
             try:
-                #self.sock.settimeout(HTTP_TO)
+                #self.sock.settimeout(TO)
                 if length <= len(self._buffer):
                     message = self._buffer[:length]
                     self._buffer = self._buffer[length:]
@@ -60,7 +74,6 @@ class Peer(object):
     def __init__(self, port):
         self.peerlist = dict()
         self.port = port
-        self.nid = ''
         self.socket = None
 
     def peer(self, host, port, peerid=""):
@@ -76,55 +89,58 @@ class Peer(object):
             }
         return d
 
-    def register_peer(self, host, port, info_hash):
+    def register_peer(self, host, port, info_hash, ipeerid):
         """Set up the application layer communication channel"""
-        if (host, port) not in self.peerlist:
-            self.peerlist[(host, port)] = self._peer_dict(host, port)
+	if (host, port) not in self.peerlist:
+            self.peerlist[(host, port)] = self.peer(host, port)
         peer = self.peerlist[(host, port)]
         conn = peer['conn']
         sock = conn.connect()
         if not sock:
             return False
+        peerLogger.info('register_peer: %s:%s  %s' % (host, port, info_hash.encode('hex')))
         # Send handshake
-        self.send_handshake(sock)
+        self.send_handshake(sock, info_hash, ipeerid)
         protocol = conn.data_come_in(1 + len(protocol_name))
         # Get peer's config
         reserved = conn.data_come_in(8)
-        if ord(reserved[0]) & AZUREUS:
+	if not reserved: return False
+        if ord(reserved[0]):
             peer['azureus'] = True
-        if ord(reserved[5]) & UTORRENT:
+        if ord(reserved[5]):
             peer['utorrent'] = True
-        if ord(reserved[7]) & DHT:
+        if ord(reserved[7]):
             peer['DHT'] = True
-        if ord(reserved[7]) & FAST_EXTENSION:
+        if ord(reserved[7]):
             peer['FAST_EXTENSION'] = True
-        if ord(reserved[7]) & NAT_TRAVERSAL:
+        if ord(reserved[7]):
             peer['NAT_TRAVERSAL'] = True
         # Get infohash
         infohash = conn.data_come_in(20)
         # Get peer id
         peer['peerid'] = conn.data_come_in(20)
         # Handshake finish!
-        print peer
+        peerLogger.info('handshake finish: %s %s' % (str(peer), peer['peerid'] == info_hash))
         # Send peer id, initiator has different behaviors from receiver, refer
         try:
-            sock.settimeout(HTTP_TO)
+            sock.settimeout(TO)
             sock.sendall(self.id)
         except Exception, err:
             if DEBUG:
-                print "Exception:Peer.connect():send_id:", err
+		print "Exception:Peer.connect():send_id:", err
         return True
 
-    def send_handshake(self, sock):
+    def send_handshake(self, sock, info_hash, ipeerid):
         try:
-            sock.settimeout(HTTP_TO)
+            sock.settimeout(TO)
             sock.sendall(''.join((chr(len(protocol_name)),
                                   protocol_name,
                                   FLAGS,
-                                  self.metainfo.infohash)))
+                                  info_hash,
+				  ipeerid)))
         except Exception, err:
             if DEBUG:
-                print "Exception:Peer.send_handshake():", err
+                peerLogger.info("Exception:Peer.send_handshake():" % err)
         pass
 
     def calc_bitfield(self, bitfield):
@@ -194,7 +210,7 @@ class Peer(object):
         try:
             ipeer = {}
             conn = Peer_Connection(sock, addr)
-            sock.settimeout(HTTP_TO)
+            sock.settimeout(TO)
             # Get peer's BT protocol
             pstrlen = ord(conn.data_come_in(1))
             ipeer['protocol'] = conn.data_come_in(pstrlen)
@@ -226,7 +242,7 @@ class Peer(object):
                 print "<>" * 50, repr(conn._buffer)
             print "2$"*50, ipeer
             # Record the infohash
-            logger.info( "%s\t%s\t%s\n" % (str(addr),time.ctime(),intify(ipeer["infohash"])) )
+            peerLogger.info( "%s\t%s\t%s\n" % (str(addr),time.ctime(),intify(ipeer["infohash"])) )
 
             # Get extension message
             if ipeer['utorrent']:
@@ -248,18 +264,18 @@ class Peer(object):
                 msg = bdecode(msg[2:])
                 conn.ut_metadata = msg['m']['ut_metadata']
                 print msg
-                logger.info( "%s\t%s\t%s\n" % (str(addr),time.ctime(),str(msg)) )
+                peerLogger.info( "%s\t%s\t%s\n" % (str(addr),time.ctime(),str(msg)) )
                 print "4$"*50
             # Handshake finish!
             print ipeer
-            logger.info( "%s\t%s\t%s\n" % (str(addr),time.ctime(),str(ipeer)) )
+            peerLogger.info( "%s\t%s\t%s\n" % (str(addr),time.ctime(),str(ipeer)) )
 
             while True:
                 l = conn.data_come_in(4)
                 l = struct.unpack("!i", l)[0]
                 msg = conn.data_come_in(l)
                 print l, repr(msg[0])
-                logger.info( "%s\t%s\t%s\t%s\n" % (str(addr),time.ctime(),repr(msg[0]),repr(msg[1])) )
+                peerLogger.info( "%s\t%s\t%s\t%s\n" % (str(addr),time.ctime(),repr(msg[0]),repr(msg[1])) )
                 self.got_message(msg, conn)
         except Exception, err:
             if DEBUG:
@@ -274,7 +290,7 @@ class Peer(object):
         while True:
             try:
                 conn, addr = self.socket.accept()
-                logger.info( "Peer send connect: %s\t%s\t \n" % (str(addr),time.ctime()) )
+                peerLogger.info( "Peer send connect: %s\t%s\t \n" % (str(addr),time.ctime()) )
                 self.probe_incoming_peer(conn, addr)
             except Exception,e:
                 pass
