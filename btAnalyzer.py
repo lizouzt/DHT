@@ -11,9 +11,24 @@ import urllib2
 import socket
 import StringIO
 import gzip
+from datetime import date
 from string import Template
 from bencode import bdecode
 from settings import *
+
+logger = logging.getLogger('dht')
+fh = logging.FileHandler('log-downloader-%s.log' % date.today(), 'wb')
+sh = logging.StreamHandler()
+
+fhFmt = logging.Formatter('%(asctime)s [line: %(lineno)d] %(levelname)s %(message)s')
+shFmt = logging.Formatter('%(levelname)s %(message)s')
+
+fh.setFormatter(fhFmt)
+sh.setFormatter(shFmt)
+
+logger.setLevel(logging.INFO)
+logger.addHandler(fh)
+logger.addHandler(sh)
 
 class Analyze():
 	_infohash_list = []
@@ -35,7 +50,7 @@ class Analyze():
 	    try:
 	    	content = bdecode(content)
 	    	info = self.getTorrentInfo(content)
-	    	print str(info)
+	    	logger.info(str(info))
 	    except Exception, e:
 	    	print '\r\nBDecode Failed: ',e
 
@@ -66,21 +81,21 @@ class Analyze():
                 content = decompressedFile.read()
 	    	return content
             except urllib2.HTTPError,e:
-                print "Server couldn't fullfill the request."
-                print 'Error code: ',e.code
+                logger.info("Server couldn't fullfill the request.")
+                logger.info('Error code: %s'%e.code)
                 return -1
             except urllib2.URLError,e:
-                print "Failed to reach. Reason: ",e.reason
+                logger.info("Failed to reach. Reason: "%e.reason)
                 return -1
 	    except Exception as e:
-	        print('BT download error: ', infohash, e)
+	        logger.info('BT download error: %s error: %s' % (infohash, str(e)))
 	        return -1
         def check_token(self, data):
             info = bdecode(data)
             if info.has_key('t') and info['t'] != TOKEN:
                 self.analyzer(info['i'])
 	def start(self):
-	    print 'Downloader Start.'
+	    logger.info('Downloader Start.')
 	    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 	    sock.bind(("0.0.0.0", DLPORT))
 	    while True:
