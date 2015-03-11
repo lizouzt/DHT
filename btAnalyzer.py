@@ -13,6 +13,7 @@ import StringIO
 import gzip
 from string import Template
 from bencode import bdecode
+from settings import *
 
 class Analyze():
 	_infohash_list = []
@@ -74,18 +75,18 @@ class Analyze():
 	    except Exception as e:
 	        print('BT download error: ', infohash, e)
 	        return -1
-        def check_token(self, info):
-            info = json.load(data)
+        def check_token(self, data):
+            info = bdecode(data)
             if info.has_key('t') and info['t'] != TOKEN:
                 self.analyzer(info['i'])
 	def start(self):
 	    print 'Downloader Start.'
 	    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-	    sock.bind(("0.0.0.0", 60006))
+	    sock.bind(("0.0.0.0", DLPORT))
 	    while True:
                 try:
                     (data, address) = sock.recvfrom(256)
-                    if data: self.check_token(info)
+                    if data: self.check_token(data)
                 except Exception,e:
                     pass
 

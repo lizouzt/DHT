@@ -12,6 +12,7 @@ from bencode import bencode, bdecode
 from time import sleep
 from utils import *
 from getTorrent import Peer
+from settings import *
 
 logger = logging.getLogger('dht')
 fh = logging.FileHandler('%s.log' % date.today(), 'wb')
