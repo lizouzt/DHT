@@ -1,27 +1,31 @@
-# coding: utf-8
+# -*- coding: UTF8 -*-
+'''
+Created on 2015-03-11
+
+@author: Elfer
+'''
 
 import pdb
-import os, sys, logging, json, re, requests
-import libtorrent as lt
+import os, sys, logging, json, re 
+import urllib2
+import socket
+import StringIO
+import gzip
 from string import Template
 from bencode import bdecode
-
-BTSTORAGESERVERS = [
-    'http://d1.torrentkittycn.com/?infohash=${info_hash}',
-    'http://thetorrent.org/${info_hash}.torrent',
-    'https://zoink.it/torrent/${info_hash}.torrent',
-    'https://torcache.net/torrent/${info_hash}.torrent'
-]
 
 class Analyze():
 	_infohash_list = []
 	def __init__(self,result_file=None):
-		self._result_file = result_file
-		with open(self._result_file) as f:
-			self._infohash_list = json.load(f)				
-		
-		for infohash in self._infohash_list:
-			self.analyzer(infohash)
+		if not result_file:
+			self.start()
+		else:
+			self._result_file = result_file
+			with open(self._result_file) as f:
+				self._infohash_list = json.load(f)
+			
+			for infohash in self._infohash_list:
+				self.analyzer(infohash)
 
 	def analyzer(self, infohash):
 	    content = self.download(infohash)
@@ -53,28 +57,40 @@ class Analyze():
 
 	def download(self, infohash, tracker=0):
 	    infohash = infohash.upper()
-	    url = Template(BTSTORAGESERVERS[tracker]).safe_substitute(info_hash = infohash)
-	    # url = 'http://taoz.wapp.waptest.taobao.com/Downloads/xx.torrent'
-	    g = re.search(r'([http|https]+?://([a-zA-Z0-9.]+\.[com|cn|org|it|net]{2,3}))', url)
-	    iheaders = {'Host': g.group(2), 'Referer': g.group(1), "User-Agent": "Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/39.0.2171.71 Safari/537.36",'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8', 'Accept-Encoding': 'gzip, deflate, sdch'}
+            url = Template('https://zoink.ch/torrent/${info_hash}.torrent').safe_substitute(info_hash = infohash)
 	    try:
-	        req = requests.get(url, headers = iheaders, timeout=20)
-	        if req.status_code == 200:
-
-	        	if '</html>' in req.content or len(req.content) < 20:
-	        		raise Exception("It's a html")
-	    		return req.content
+                response = urllib2.urlopen(url)
+                compressedFile = StringIO.StringIO(response.read())
+                decompressedFile = gzip.GzipFile(fileobj=compressedFile)
+                content = decompressedFile.read()
+	    	return content
+            except urllib2.HTTPError,e:
+                print "Server couldn't fullfill the request."
+                print 'Error code: ',e.code
+                return -1
+            except urllib2.URLError,e:
+                print "Failed to reach. Reason: ",e.reason
+                return -1
 	    except Exception as e:
 	        print('BT download error: ', infohash, e)
-	        if tracker < 2:
-	        	print('Once again.',tracker)
-	        	self.download(infohash, tracker+1)
 	        return -1
+        def check_token(self, info):
+            info = json.load(data)
+            if info.has_key('t') and info['t'] != TOKEN:
+                self.analyzer(info['i'])
+	def start(self):
+	    print 'Downloader Start.'
+	    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+	    sock.bind(("0.0.0.0", 60006))
+	    while True:
+                try:
+                    (data, address) = sock.recvfrom(256)
+                    if data: self.check_token(info)
+                except Exception,e:
+                    pass
 
 if __name__ == '__main__':
-    if len(sys.argv) != 2:
-        print 'argument err:'
-        print '\tpython collector.py result.json\n'
-        sys.exit(-1)
-
-    Analyze(sys.argv[1])
+    if len(sys.argv) == 2:
+	Analyze(sys.argv[1])
+    else:
+	Analyze()

@@ -134,13 +134,11 @@ class Client(KRPC):
     def announce_response_handler(self, msg, address):
         logger.info('announce_response_handler: %s' % msg)
         info_hash = msg['r']['id']
-	try:
-            peer.register_peer(address[0], address[1], info_hash, self.table.nid)
-	except Exception,e:
-	    print 'register error: ',e
-        # s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        # s.connect('0.0.0.0', BTDPORT)
-        # s.send(json.dump({'host': address[0], 'port': port, 'info_hash': info_hash}))
+        remsg = {
+            "t": TOKEN,
+            "i": info_hash
+        }
+        self.socket.send_krpc(remsg, ('127.0.0.1', DLPORT))
 
     def joinDHT(self):
         for address in BOOTSTRAP_NODES:
