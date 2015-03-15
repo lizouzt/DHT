@@ -20,16 +20,6 @@ logging.basicConfig(level=logging.INFO,
                    filename='./dhtcollector.log',
                    filemode='wb')
 
-DHT_ROUTER_NODES = [
-    ('router.bittorrent.com', 6881),
-    ('router.utorrent.com', 6881),
-    ('router.bitcomet.com', 6881),
-    ('dht.transmissionbt.com', 6881),
-    ('tracker.torrentbay.to', 6969),
-    ('exodus.desync.com', 6969),
-    ('open.demonii.com', 1337)
-]
-
 class DHTCollector(object):
     '''
     一个简单的 bt 下载工具，依赖开源库 libtorrent.
@@ -207,7 +197,6 @@ class DHTCollector(object):
                 '''
                 其他DHT node向本node针对一条info-hash发起对接
                 '''
-                logging.info('dht_get_peers_alert: ' + alert)
                 info_hash = alert.info_hash.to_string().encode('hex')
 
                 if info_hash in self._meta_list:
