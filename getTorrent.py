@@ -3,7 +3,7 @@ import os
 import pdb
 import socket
 import logging
-import os, sys, time, json, re
+import os, sys, time, re
 from datetime import date
 
 peerLogger = logging.getLogger('peer')

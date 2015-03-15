@@ -1,11 +1,10 @@
 # -*- coding: UTF8 -*-
-import pdb
 import socket
 import MySQLdb
 import dbManage
 import hashlib
 import logging
-import os, sys, time, json, re
+import os, sys, time, re
 from datetime import date
 from bisect import bisect_left
 from bencode import bencode, bdecode

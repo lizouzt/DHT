@@ -6,107 +6,243 @@ Created on 2015-03-11
 '''
 
 import pdb
-import os, sys, logging, json, re 
+import os,sys,time,logging,json,re 
 import urllib2
 import socket
 import StringIO
 import gzip
+import hashlib
 from datetime import date
 from string import Template
-from bencode import bdecode
+from bencode import bdecode,bencode
+from threading import Timer,Thread
+from utils import get_time_formatter
+from dbManage import DBManage
 from settings import *
 
-logger = logging.getLogger('dht')
-fh = logging.FileHandler('log-downloader-%s.log' % date.today(), 'wb')
-sh = logging.StreamHandler()
+OUTPUT_STATFILE = 10
+END = False
+MANAGE = DBManage()
 
-fhFmt = logging.Formatter('%(asctime)s [line: %(lineno)d] %(levelname)s %(message)s')
-shFmt = logging.Formatter('%(levelname)s %(message)s')
+class Statistic(object):
+	"""download data statistic"""
+	def __init__(self, file_name):
+		super(Statistic, self).__init__()
+		self.begin_time = time.time()
+		self.logMsg = {
+			1: "received tcp request",
+			2: "TCP invalid msg from: %s::%d",
+			3: "Bdecode Failed %s",
+			4: "Server couldn't fullfill the request. Error code: %s",
+			5: "Failed to reach. Reason: %s",
+			6: "BT download error: %s",
+		}
+		self._count_success = 0
+		self._count_receive_tcp = 0
+		self._count_invalid_msg = 0
+		self._count_bdecode_error = 0
+		self._count_btdownload_error = 0
+		self._stat_file = file_name
 
-fh.setFormatter(fhFmt)
-sh.setFormatter(shFmt)
+		Timer(OUTPUT_STATFILE, self.output_stat)
 
-logger.setLevel(logging.INFO)
-logger.addHandler(fh)
-logger.addHandler(sh)
+		self.initLogger()
 
-class Analyze():
-	_infohash_list = []
-	def __init__(self,result_file=None):
-		if not result_file:
+	def initLogger(self):
+		self.logger = logging.getLogger('btAnalyzer')
+		fh = logging.FileHandler('log-downloader-%s.log' % date.today(), 'wb')
+		sh = logging.StreamHandler()
+
+		fhFmt = logging.Formatter('%(asctime)s [line: %(lineno)d] %(levelname)s %(message)s')
+		shFmt = logging.Formatter('%(levelname)s %(message)s')
+
+		fh.setFormatter(fhFmt)
+		sh.setFormatter(shFmt)
+
+		self.logger.setLevel(logging.INFO)
+		self.logger.addHandler(fh)
+		self.logger.addHandler(sh)
+
+	def output_stat(self):
+		content = ['torrents:']
+		interval = time.time() - self.begin_time
+		content.append('  PID: %s' % os.getpid())
+		content.append('  Time: %s' % time.strftime('%Y-%m-%d %H:%M:%S'))
+		content.append('  Run time: %s' % get_time_formatter(interval))
+		content.append('  Get BT nums: %d' % self._count_success)
+		content.append('  Get TCP nums: %d' % self._count_receive_tcp)
+		content.append('  Get invalid TCP nums: %d' % self._count_invalid_msg)
+		content.append('  DownLoad error nums: %d' % self._count_btdownload_error)
+		content.append('  BDecode error nums: %d'% self._count_bdecode_error)
+		content.append('\n')
+		try:
+			with open(self._stat_file, 'wb') as f:
+				f.write('\n'.join(content))
+		except Exception as err:
+			self.log('output_stat error %s', str(err))
+
+		if not END: Timer(OUTPUT_STATFILE, self.output_stat)
+
+	def log(self, info, *args, **kwargs):
+		t = 'info'
+		if kwargs.has_key('type'):
+			t = kwargs['type']
+		log = self.logger.info
+		if t == 'error':
+			log = self.logger.error
+		elif t == 'warning':
+			log = self.logger.warning
+		elif t == 'debug':
+			log = self.logger.debug
+		log(info % args)
+
+	def record(self, t, *dic):
+		if not t:
+			return -1
+		elif t == 0:
+			self._count_success += 1
+		elif t == 1:
+			self._count_receive_tcp += 1
+		elif t == 2:
+			self._count_invalid_msg += 1
+			self.log(self.logMsg[t], dic, type='error')
+		elif t == 3:
+			self._count_bdecode_error += 1
+			self.log(self.logMsg[t], dic, type='error')
+		elif t in (4,5,6):
+			self._count_btdownload_error += 1
+			self.log(self.logMsg[t], dic, type='warning')
+		else:
+			pass
+
+class Analyze(Statistic):
+	def __init__(self,statistic_file='statistic.stat',hashlist_file=None):
+		Statistic.__init__(self,statistic_file)
+		if not hashlist_file:
 			self.start()
 		else:
-			self._result_file = result_file
-			with open(self._result_file) as f:
+			_hashlist_file = hashlist_file
+			with open(_hashlist_file) as f:
 				self._infohash_list = json.load(f)
 			
 			for infohash in self._infohash_list:
 				self.analyzer(infohash)
 
 	def analyzer(self, infohash):
-	    content = self.download(infohash)
-	    if(content == -1):
-	        return
-	    try:
-	    	content = bdecode(content)
-	    	info = self.getTorrentInfo(content)
-	    	logger.info(str(info))
-	    except Exception, e:
-	    	print '\r\nBDecode Failed: ',e
+		content = self.download(infohash)
+		if content:
+			try:
+				content = bdecode(content)
+			except Exception, e:
+				self.record(3, str(e))
+			meta = self.getTorrentInfo(content)
+			self.record(0)
+			MANAGE.saveTorrent(meta)
 
 	def getTorrentInfo(self, content):
-		def getLen(list):
-			size = 0
-			for file in list:
-				size += file['length']
-			return size
-
 		metadata = content['info']
+		if 'encoding' in metadata:
+			encoding = metadata['encoding']
+		else:
+			encoding = 'utf-8'
 
-		info = {
-			'name': metadata['name'],
-			'cdate': content['creation date'],
-			'files': metadata['files'],
-			'size': getLen(metadata['files'])
+		meta = {
+			'info_hash': hashlib.sha1(bencode(metadata)).digest().encode('hex'),
+			'name': metadata['name'].decode(encoding),
+			'announce': content['announce'],
+			'announce_list': 1,
+			'media_type': None
 		}
-		return info
+		
+		if re.search(RVIDEO, meta['name']):
+			meta['media_type'] = 'video'
+		elif re.search(RAUDIO, meta['name']):
+			meta['media_type'] = 'audio'
 
-	def download(self, infohash, tracker=0):
+		if 'announce-list' in content:
+			meta['announce_list'] = len(content['announce-list'])
+
+		if 'creation date' in content:
+			meta['creation_date'] = content['creation date']
+
+		if 'files' in metadata:
+			total_size = 0
+			files = []
+			for fd in metadata['files']:
+				_d = fd.copy()
+				_path = [p.decode(encoding) for p in _d['path']]
+				_d['path'] = os.path.join(*_path)
+				files.append(_d)
+				total_size += _d['length']
+
+			meta['total_size'] = total_size
+			meta['num_files'] = len(files)
+			meta['files'] = json.dumps(files, ensure_ascii=False)
+		else:
+			_d = {}
+			_d['path'] = meta['name']
+			_d['length'] = metadata['length']
+			meta['num_files'] = 1
+			meta['files'] = json.dumps([_d], ensure_ascii=False)
+			meta['total_size'] = metadata['length']
+
+		return meta
+
+	def download(self, infohash):
 	    infohash = infohash.upper()
-            url = Template('https://zoink.ch/torrent/${info_hash}.torrent').safe_substitute(info_hash = infohash)
-	    try:
-                response = urllib2.urlopen(url)
-                compressedFile = StringIO.StringIO(response.read())
-                decompressedFile = gzip.GzipFile(fileobj=compressedFile)
-                content = decompressedFile.read()
-	    	return content
+	    btfound = False
+	    for site in BTSTORAGESERVERS:
+	    	if btfound: return
+            url = Template(site).safe_substitute(info_hash = infohash)
+            _g = re.search(r'([http|https]+?://([a-zA-Z0-9.]+\.[com|cn|org|it|ch|io|net]{2,3}))', url)
+            try:
+            	print url
+            	if _g.group(2) == 'thetorrent.org':
+            		urllib2.urlopen(url, timeout=10)
+            	response = urllib2.urlopen(url, timeout=60)
+                content = False
+                if _g.group(2) == 'zoink.ch':
+                    compressedFile = StringIO.StringIO(response.read())
+                    decompressedFile = gzip.GzipFile(fileobj=compressedFile)
+                    content = decompressedFile.read()
+                else:
+	            	content = response.read()
+	            	if content.rfind('</body>'):
+	            		raise Exception('Response with html')
+                btfound = True
+                return content
             except urllib2.HTTPError,e:
-                logger.info("Server couldn't fullfill the request.")
-                logger.info('Error code: %s'%e.code)
-                return -1
+                self.record(4, e.code)
             except urllib2.URLError,e:
-                logger.info("Failed to reach. Reason: "%e.reason)
-                return -1
-	    except Exception as e:
-	        logger.info('BT download error: %s error: %s' % (infohash, str(e)))
-	        return -1
-        def check_token(self, data):
-            info = bdecode(data)
-            if info.has_key('t') and info['t'] != TOKEN:
-                self.analyzer(info['i'])
+                self.record(5, e.reason)
+            except Exception as e:
+            	self.record(6, str(e))
+
+	def check_token(self, data, address):
+		info = bdecode(data)
+		if info.has_key('t') and info['t'] == TOKEN:
+			Thread(target=self.analyzer, args=[info['i']]).start()
+		else:
+			self.record(2, address[0], address[1])
+
 	def start(self):
-	    logger.info('Downloader Start.')
-	    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-	    sock.bind(("0.0.0.0", DLPORT))
-	    while True:
-                try:
-                    (data, address) = sock.recvfrom(256)
-                    if data: self.check_token(data)
-                except Exception,e:
-                    pass
+		self.log('Downloader Start.')
+		sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+		sock.bind(("0.0.0.0", DLPORT))
+		while True:
+			try:
+				(data, address) = sock.recvfrom(256)
+				if data: self.check_token(data, address)
+			except KeyboardInterrupt:
+				self.log('STOPPED')
+				sock.close()
+				END = True
+				exit()
+			except Exception,e:
+				pass
 
 if __name__ == '__main__':
-    if len(sys.argv) == 2:
-	Analyze(sys.argv[1])
-    else:
-	Analyze()
+	if len(sys.argv) == 3:
+		Analyze(sys.argv[1])
+	else:
+		Analyze()
