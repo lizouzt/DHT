@@ -139,7 +139,7 @@ class Client(KRPC):
             "t": TOKEN,
             "i": info_hash
         }
-        self.socket.send_krpc(remsg, ('127.0.0.1', DLPORT))
+        self.send_krpc(remsg, ('127.0.0.1', DLPORT))
 
     def joinDHT(self):
         for address in BOOTSTRAP_NODES:
