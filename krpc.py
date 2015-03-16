@@ -1,11 +1,10 @@
 # -*- coding: UTF8 -*-
-import pdb
 import socket
 import MySQLdb
 import dbManage
 import hashlib
 import logging
-import os, sys, time, json, re
+import os, sys, time, re
 from datetime import date
 from bisect import bisect_left
 from bencode import bencode, bdecode
@@ -27,12 +26,6 @@ sh.setFormatter(shFmt)
 logger.setLevel(logging.INFO)
 logger.addHandler(fh)
 logger.addHandler(sh)
-
-BOOTSTRAP_NODES = [
-    ('router.bittorrent.com', 6881),
-    ('router.utorrent.com', 6881),
-    ('dht.transmissionbt.com', 6881)
-]
 
 PORT = 8006
 BTDPORT = 8001
@@ -142,7 +135,7 @@ class Client(KRPC):
         self.send_krpc(remsg, ('127.0.0.1', DLPORT))
 
     def joinDHT(self):
-        for address in BOOTSTRAP_NODES:
+        for address in DHT_ROUTER_NODES:
             self.find_node(address)
     def fill_the_buckets(self):
         if len( self.table.buckets ) < 2:

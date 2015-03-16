@@ -7,6 +7,7 @@ Created on 2014-11-30
 import pdb
 from sqlalchemy import *
 from sqlalchemy.orm import mapper,sessionmaker,create_session
+from settings import *
 
 class Movie(object):
 	pass
@@ -21,7 +22,8 @@ class DBManage():
 		#sqlalchemy.create_engine('mysql://user:password@127.0.0.1/test?charset=utf8')
 		####
 		try:
-			self.db = create_engine("mysql://localhost/test")
+			self.db = create_engine("mysql://%s:%s@%s/%s" % (MQUSER, MQPWD, MQSERVER, MQDB))
+			print 'Connect to mysql success.'
 		except Exception,e:
 			print "Connect Mysql Engine Error %d: %s" % (e.args[0], e.args[1])
 
@@ -50,21 +52,16 @@ class DBManage():
 	def reflectTorrentObject(self, data):
 		torrent = Torrents()
 		torrent.name = data['name']
-		torrent.creator = data['creator']
 		torrent.num_files = data['num_files']
 		torrent.total_size = data['total_size']
 		torrent.info_hash = data['info_hash']
 		torrent.media_type = data['media_type']
 		torrent.files = data['files']
-
-		if 'priv' in data:
-			torrent.priv = data['priv']
+		torrent.announce = data['announce']
+		torrent.announce_list = data['announce_list']
 
 		if 'creation_date' in data:
 			torrent.creation_date = data['creation_date']
-
-		if 'is_valid' in data:
-			torrent.isvalid = data['is_valid']
 
 		if torrent.name == None or torrent.info_hash == None:
 			return None
@@ -79,12 +76,13 @@ class DBManage():
 			Maker = sessionmaker()
 			Maker.configure(bind=self.db)
 			session = Maker()
-			
-			if session.query(Torrents).filter_by(info_hash=torrent.info_hash).scalar() == None:
+			try:
+				# if session.query(Torrents).filter_by(info_hash=torrent.info_hash).scalar() == None:
 				session.add(torrent)
 				session.flush()
-
-			session.commit()
+				session.commit()
+			except Exception,e:
+				print 'Insert Error',e
 			print 'Inserted'
 		else:
 			print 'Nope'
@@ -105,3 +103,12 @@ class DBManage():
 			print 'Inserted'
 		else:
 			print 'Nope'
+
+	def queryMovies(self, params):
+		pass
+
+	def getMovieDetail(self, params):
+		pass
+
+	def searchAssociateMovies(self, params):
+		pass

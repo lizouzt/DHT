@@ -9,6 +9,7 @@ from string import Template
 from bencode import bdecode
 from urllib2 import HTTPError
 import dbManage
+from settings import *
 
 manage = dbManage.DBManage()
 
@@ -16,18 +17,8 @@ logging.basicConfig(level=logging.INFO,
                    # format='%(asctime)s [line: %(lineno)d] %(levelname)s %(message)s',
                    format='%(levelname)s %(message)s',
                    datefnt='%d %b %H:%M%S',
-                   filename='./processing.log',
+                   filename='./dhtcollector.log',
                    filemode='wb')
-
-DHT_ROUTER_NODES = [
-    ('router.bittorrent.com', 6881),
-    ('router.utorrent.com', 6881),
-    ('router.bitcomet.com', 6881),
-    ('dht.transmissionbt.com', 6881)
-]
-
-RVIDEO = re.compile(r"\.mkv$|\.mp4$|\.avi$|\.rmvb$|\.rm$|\.asf$|\.mpg$|\.wmv$|\.vob$")
-RAUDIO = re.compile(r"\.mp3$|\.ogg$|\.asf$|\.wma$|\.wav$|\.acc$|\.flac$|\.ape$|\.lpac$")
 
 class DHTCollector(object):
     '''
@@ -91,8 +82,6 @@ class DHTCollector(object):
             file_info['comment'] = torrent_info_obj.comment()
             file_info['num_files'] = torrent_info_obj.num_files()
             file_info['total_size'] = torrent_info_obj.total_size()
-            file_info['priv'] = torrent_info_obj.priv()
-            # file_info['is_i2p'] = torrent_info_obj.is_i2p()
             # file_info['creation_date'] = torrent_info_obj.creation_date()
             file_info['info_hash'] = torrent_info_obj.info_hash().to_string().encode('hex')
 
@@ -208,7 +197,6 @@ class DHTCollector(object):
                 '''
                 其他DHT node向本node针对一条info-hash发起对接
                 '''
-                logging.info('dht_get_peers_alert: ' + alert)
                 info_hash = alert.info_hash.to_string().encode('hex')
 
                 if info_hash in self._meta_list:

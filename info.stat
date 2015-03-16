@@ -1,9 +1,9 @@
 torrents:
-  pid: 559
-  time: 2015-02-01 17:00:27
-  run time: day: 0, hour: 0, minute: 10, second: 0
+  pid: 1845
+  time: 2015-03-16 01:36:24
+  run time: day: 0, hour: 0, minute: 34, second: 24
   start port: 8006
-  krpc table nodes nums: 310
-  get peers nums: 94
+  krpc table nodes nums: 0
+  get peers nums: 0
   announce peer nums: 0
 
