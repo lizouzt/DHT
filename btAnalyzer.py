@@ -20,10 +20,9 @@ from utils import get_time_formatter
 from dbManage import DBManage
 from settings import *
 
-OUTPUT_STATFILE = 10
+OUTPUT_STATFILE = 60
 END = False
 MANAGE = DBManage()
-
 class Statistic(object):
 	"""download data statistic"""
 	def __init__(self, file_name):
@@ -43,9 +42,7 @@ class Statistic(object):
 		self._count_bdecode_error = 0
 		self._count_btdownload_error = 0
 		self._stat_file = file_name
-
-		Timer(OUTPUT_STATFILE, self.output_stat)
-
+		Timer(OUTPUT_STATFILE, self.output_stat).start()
 		self.initLogger()
 
 	def initLogger(self):
@@ -64,6 +61,7 @@ class Statistic(object):
 		self.logger.addHandler(sh)
 
 	def output_stat(self):
+		global END
 		content = ['torrents:']
 		interval = time.time() - self.begin_time
 		content.append('  PID: %s' % os.getpid())
@@ -81,7 +79,8 @@ class Statistic(object):
 		except Exception as err:
 			self.log('output_stat error %s', str(err))
 
-		if not END: Timer(OUTPUT_STATFILE, self.output_stat)
+		if not END: Timer(OUTPUT_STATFILE, self.output_stat).start()
+		else: exit()
 
 	def log(self, info, *args, **kwargs):
 		t = 'info'
@@ -226,6 +225,7 @@ class Analyze(Statistic):
 			self.record(2, address[0], address[1])
 
 	def start(self):
+		global END
 		self.log('Downloader Start.')
 		sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 		sock.bind(("0.0.0.0", DLPORT))
