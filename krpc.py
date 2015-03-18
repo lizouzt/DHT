@@ -130,7 +130,7 @@ class Client(KRPC):
         info_hash = msg['r']['id']
         remsg = {
             "t": TOKEN,
-            "i": info_hash
+            "i": info_hash.encode('hex')
         }
         self.send_krpc(remsg, ('127.0.0.1', DLPORT))
 
