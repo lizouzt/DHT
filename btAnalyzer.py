@@ -96,7 +96,7 @@ class Statistic(object):
 		log(info % args)
 
 	def record(self, t, *dic):
-		if not t:
+		if t is None:
 			return -1
 		elif t == 0:
 			self._count_success += 1
