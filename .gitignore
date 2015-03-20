@@ -8,6 +8,7 @@
 *.db
 *.gz
 *.tar
+*.stat
 .DS_Store
 
 __pycache__/

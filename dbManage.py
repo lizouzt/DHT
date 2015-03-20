@@ -81,9 +81,9 @@ class DBManage():
 				session.add(torrent)
 				session.flush()
 				session.commit()
+				print 'Inserted'
 			except Exception,e:
 				print 'Insert Error',e
-			print 'Inserted'
 		else:
 			print 'Nope'
 
