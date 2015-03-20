@@ -12,6 +12,7 @@ import socket
 import StringIO
 import gzip
 import hashlib
+import chardet
 from datetime import date
 from string import Template
 from bencode import bdecode,bencode
@@ -141,10 +142,11 @@ class Analyze(Statistic):
 
 	def getTorrentInfo(self, content):
 		metadata = content['info']
+		encoding = 'utf-8'
 		if 'encoding' in metadata:
 			encoding = metadata['encoding']
 		else:
-			encoding = 'utf-8'
+			encoding = chardet.detect(metadata['name'])['encoding']
 
 		meta = {
 			'info_hash': hashlib.sha1(bencode(metadata)).digest().encode('hex'),
@@ -153,30 +155,39 @@ class Analyze(Statistic):
 			'announce_list': 1,
 			'media_type': None
 		}
-		
+
 		if re.search(RVIDEO, meta['name']):
 			meta['media_type'] = 'video'
+		
 		elif re.search(RAUDIO, meta['name']):
 			meta['media_type'] = 'audio'
 
 		if 'announce-list' in content:
 			meta['announce_list'] = len(content['announce-list'])
-
+		
 		if 'creation date' in content:
 			meta['creation_date'] = content['creation date']
 
 		if 'files' in metadata:
 			total_size = 0
 			files = []
+			_count = 30
 			for fd in metadata['files']:
-				_d = fd.copy()
-				_path = [p.decode(encoding) for p in _d['path']]
+				if _count == 0:
+					break
+				_count -= 1
+				_d = {'size': 0}
+				_path = [p.decode(encoding) for p in fd['path']]
 				_d['path'] = os.path.join(*_path)
+				if 'size' in fd:
+					_d['size'] = fd['size']
+				elif 'length' in fd:
+					_d['size'] = fd['length']
 				files.append(_d)
-				total_size += _d['length']
+				total_size += _d['size']
 
 			meta['total_size'] = total_size
-			meta['num_files'] = len(files)
+			meta['num_files'] = len(metadata['files'])
 			meta['files'] = json.dumps(files, ensure_ascii=False)
 		else:
 			_d = {}
@@ -185,7 +196,6 @@ class Analyze(Statistic):
 			meta['num_files'] = 1
 			meta['files'] = json.dumps([_d], ensure_ascii=False)
 			meta['total_size'] = metadata['length']
-
 		return meta
 
 	def download(self, infohash):

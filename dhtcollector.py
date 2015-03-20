@@ -45,9 +45,9 @@ class DHTCollector(object):
     _meta_list = {}
 
     def __init__(self,
-                 session_nums=50,
+                 session_nums=100,
                  delay_interval=40,
-                 exit_time=10*60*60,
+                 exit_time=2*10*60*60,
                  result_file=None,
                  stat_file=None,
                  never_stop=False):
@@ -358,5 +358,5 @@ if __name__ == '__main__':
                    stat_file=stat_file,
                    never_stop=never_stop)
     # 创建p2p客户端
-    sd.create_session(65536)
+    sd.create_session(6881)
     sd.start_work()
