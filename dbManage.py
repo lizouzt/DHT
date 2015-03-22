@@ -22,7 +22,7 @@ class DBManage():
 		#sqlalchemy.create_engine('mysql://user:password@127.0.0.1/test?charset=utf8')
 		####
 		try:
-			self.db = create_engine("mysql://%s:%s@%s/%s" % (MQUSER, MQPWD, MQSERVER, MQDB))
+			self.db = create_engine("mysql://%s:%s@%s/%s?charset=utf8" % (MQUSER, MQPWD, MQSERVER, MQDB))
 			print 'Connect to mysql success.'
 		except Exception,e:
 			print "Connect Mysql Engine Error %d: %s" % (e.args[0], e.args[1])

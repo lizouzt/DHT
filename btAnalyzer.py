@@ -178,7 +178,15 @@ class Analyze(Statistic):
 					break
 				_count -= 1
 				_d = {'size': 0}
-				_path = [p.decode(encoding) for p in fd['path']]
+				# _path = [p.decode(encoding) for p in fd['path']]
+				_path = []
+				for p in fd['path']:
+					_ascii = ''
+					try:
+						_ascii = p.decode(encoding)
+					except Exception:
+						_ascii = p
+					_path.append(_ascii)
 				_d['path'] = os.path.join(*_path)
 				if 'size' in fd:
 					_d['size'] = fd['size']
@@ -193,7 +201,7 @@ class Analyze(Statistic):
 		else:
 			_d = {}
 			_d['path'] = meta['name']
-			_d['length'] = metadata['length']
+			_d['size'] = metadata['length']
 			meta['num_files'] = 1
 			meta['files'] = json.dumps([_d], ensure_ascii=False)
 			meta['total_size'] = metadata['length']
