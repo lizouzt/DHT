@@ -127,8 +127,8 @@ class Client(KRPC):
 
     def announce_response_handler(self, msg, address):
         logger.info('announce_response_handler: %s' % msg)
-        info_hash = msg['r']['id']
-        remsg = {
+       	info_hash = msg['r']['id']
+	remsg = {
             "t": TOKEN,
             "i": info_hash.encode('hex')
         }
@@ -193,11 +193,18 @@ class Client(KRPC):
                 "token": token
             }
         }
+	'''
 	try:
             self.send_krpc(msg, address)
-            #logger.info('send announce_peer to %s for %s' % (address, info_hash.encode('hex')))
+            logger.info('send announce_peer to %s for %s' % (address, info_hash.encode('hex')))
 	except Exception as e:
 	    print 'send_announce_peer error: ',e
+	'''
+	remsg = {
+            "t": TOKEN,
+            "i": info_hash.encode('hex')
+        }
+        self.send_krpc(remsg, ('127.0.0.1', DLPORT))
 
     def start(self):
         self.joinDHT()

@@ -21,7 +21,7 @@ from utils import get_time_formatter
 from dbManage import DBManage
 from settings import *
 
-OUTPUT_STATFILE = 60
+OUTPUT_STATFILE = 10
 END = False
 MANAGE = DBManage()
 class Statistic(object):
@@ -36,12 +36,14 @@ class Statistic(object):
 			4: "Server couldn't fullfill the request. Error code: %s",
 			5: "Failed to reach. Reason: %s",
 			6: "BT download error: %s",
+			7: "Meta decode error: %s",
 		}
 		self._count_success = 0
 		self._count_receive_tcp = 0
 		self._count_invalid_msg = 0
 		self._count_bdecode_error = 0
 		self._count_btdownload_error = 0
+		self._count_decode_error = 0
 		self._stat_file = file_name
 		Timer(OUTPUT_STATFILE, self.output_stat).start()
 		self.initLogger()
@@ -73,6 +75,7 @@ class Statistic(object):
 		content.append('  Get invalid TCP nums: %d' % self._count_invalid_msg)
 		content.append('  DownLoad error nums: %d' % self._count_btdownload_error)
 		content.append('  BDecode error nums: %d'% self._count_bdecode_error)
+		content.append('  Meta decode error nums: %d' % self._count_decode_error)
 		content.append('\n')
 		try:
 			with open(self._stat_file, 'wb') as f:
@@ -111,11 +114,14 @@ class Statistic(object):
 		elif t == 3:
 			self._count_bdecode_error += 1
 			self.log(self.logMsg[t], dic, type='error')
-		elif t in (4,5):
+		elif t in (5,6):
 			self._count_btdownload_error += 1
-			self.log(self.logMsg[t], dic, type='warning')
-		elif t == 6:
+			self.log(self.logMsg[t], dic, type='info')
+		elif t == 4:
 			self._count_btdownload_error += 1
+		elif t == 7:
+			self.log(self.logMsg[t], dic, type="warning")
+			self._count_decode_error += 1
 		else:
 			pass
 
@@ -145,11 +151,12 @@ class Analyze(Statistic):
 
 	def getTorrentInfo(self, content):
 		metadata = content['info']
-		encoding = 'utf-8'
+		encoding = None
 		if 'encoding' in metadata:
 			encoding = metadata['encoding']
 		else:
-			encoding = chardet.detect(metadata['name'])['encoding']
+			_encode = chardet.detect(metadata['name'])['encoding']
+			encoding = _encode if _encode is not None else 'utf-8'
 
 		meta = {
 			'info_hash': hashlib.sha1(bencode(metadata)).digest().encode('hex'),
@@ -161,9 +168,9 @@ class Analyze(Statistic):
 		try:
 			meta['name'] = metadata['name'].decode(encoding)
 		except Exception,e:
-			self.log('Meta encode error: %s', str(e))
+			self.record(7, str(e))
 			meta['name'] = metadata['name'].decode('utf-8')
-
+		
 		if re.search(RVIDEO, meta['name']):
 			meta['media_type'] = 'video'
 		
@@ -179,20 +186,21 @@ class Analyze(Statistic):
 		if 'files' in metadata:
 			total_size = 0
 			files = []
-			_count = 30
+			_count = 26
 			for fd in metadata['files']:
 				if _count == 0:
 					break
 				_count -= 1
 				_d = {'size': 0}
-				# _path = [p.decode(encoding) for p in fd['path']]
 				_path = []
 				for p in fd['path']:
 					_ascii = ''
 					try:
 						_ascii = p.decode(encoding)
 					except Exception:
-						_ascii = p
+						_encode = chardet.detect(p)['encoding']
+						_encode = _encode if _encode is not None else 'utf-8'
+						_ascii = p.decode(_encode)
 					_path.append(_ascii)
 				_d['path'] = os.path.join(*_path)
 				if 'size' in fd:
