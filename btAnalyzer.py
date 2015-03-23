@@ -111,9 +111,11 @@ class Statistic(object):
 		elif t == 3:
 			self._count_bdecode_error += 1
 			self.log(self.logMsg[t], dic, type='error')
-		elif t in (4,5,6):
+		elif t in (4,5):
 			self._count_btdownload_error += 1
 			self.log(self.logMsg[t], dic, type='warning')
+		elif t == 6:
+			self._count_btdownload_error += 1
 		else:
 			pass
 
@@ -151,11 +153,16 @@ class Analyze(Statistic):
 
 		meta = {
 			'info_hash': hashlib.sha1(bencode(metadata)).digest().encode('hex'),
-			'name': metadata['name'].decode(encoding),
 			'announce': content['announce'],
 			'announce_list': 1,
 			'media_type': None
 		}
+
+		try:
+			meta['name'] = metadata['name'].decode(encoding)
+		except Exception,e:
+			self.log('Meta encode error: %s', str(e))
+			meta['name'] = metadata['name'].decode('utf-8')
 
 		if re.search(RVIDEO, meta['name']):
 			meta['media_type'] = 'video'
