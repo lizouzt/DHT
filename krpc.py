@@ -132,7 +132,7 @@ class Client(KRPC):
             "t": TOKEN,
             "i": info_hash.encode('hex')
         }
-        self.send_krpc(remsg, ('127.0.0.1', DLPORT))
+        self.send_krpc(remsg, (DLHOST, DLPORT))
 
     def joinDHT(self):
         for address in DHT_ROUTER_NODES:
@@ -204,14 +204,14 @@ class Client(KRPC):
             "t": TOKEN,
             "i": info_hash.encode('hex')
         }
-        self.send_krpc(remsg, ('127.0.0.1', DLPORT))
+        self.send_krpc(remsg, (DLHOST, DLPORT))
 
     def start(self):
         self.joinDHT()
         print 'Crawler Start.'
         while True:
             try:
-                (data, address) = self.socket.recvfrom(512)
+                (data, address) = self.socket.recvfrom(1024)
                 msg = bdecode(data)
                 self.types[msg["y"]](msg, address)
             except Exception,e:
@@ -298,6 +298,11 @@ class Server(Client):
             extra = msg['a']
             if 'info_hash' and 'token' in extra:
             	self.send_get_peers(extra['info_hash'])
+		_msg = {
+			"t": TOKEN,
+			"i": extra['info_hash'].encode('hex')
+		}
+            self.send_krpc(_msg, (DLHOST, DLPORT))
 	except KeyError, e:
             print 'announce_peer_received with error: ', str(e)
 	except Exception as e:
