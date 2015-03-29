@@ -1,9 +1,11 @@
 torrents:
-  pid: 1521
-  time: 2015-03-21 02:04:57
-  run time: day: 0, hour: 0, minute: 15, second: 14
-  start port: 8006
-  krpc table nodes nums: 0
-  get peers nums: 0
-  announce peer nums: 0
+  pid: 18951
+  time: 2015-03-30 00:08:09
+  run time: day: 0, hour: 0, minute: 3, second: 3
+  start port: 8001
+  collect session num: 100
+  info hash nums from get peers: 992
+  torrent collection rate: 324.390894 /minute
+  current torrent count: 994
+  total torrent count: 994
 

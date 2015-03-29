@@ -8,10 +8,10 @@ import libtorrent as lt
 from string import Template
 from bencode import bdecode
 from urllib2 import HTTPError
-import dbManage
+#import dbManage
 from settings import *
 
-manage = dbManage.DBManage()
+#manage = dbManage.DBManage()
 
 logging.basicConfig(level=logging.INFO,
                    # format='%(asctime)s [line: %(lineno)d] %(levelname)s %(message)s',
@@ -36,7 +36,7 @@ class DHTCollector(object):
     _auto_manage_interval = 15
     _ALERT_TYPE_SESSION = None
     # 主循环 sleep 时间
-    _sleep_time = 0.5
+    _sleep_time = 2
     _start_port = 32800
     _sessions = []
     _infohash_queue_from_getpeers = []
@@ -107,7 +107,7 @@ class DHTCollector(object):
 
         print json.dumps(file_info, ensure_ascii=False)
 
-        manage.saveTorrent(file_info)
+        #manage.saveTorrent(file_info)
 
     def _get_runtime(self, interval):
         day = interval / (60*60*24)
@@ -144,14 +144,7 @@ class DHTCollector(object):
     def _handle_alerts(self, session, alerts):
         while len(alerts):
             alert = alerts.pop()
-            if isinstance(alert, lt.add_torrent_alert):
-                '''
-                session pop the torrent which attempted to be added.
-                包含当前add动作的状态，属性：error、handle
-                '''
-                alert.handle.set_upload_limit(self._torrent_upload_limit)
-                alert.handle.set_download_limit(self._torrent_download_limit)
-
+	    #pdb.set_trace()
             if isinstance(alert, lt.piece_finished_alert):
                 logging.info('piece_finished_alert')
                 print 'one piece...'
@@ -159,9 +152,6 @@ class DHTCollector(object):
             if isinstance(alert, lt.torrent_finished_alert):
                 logging.info('torrent_finished_alert')
                 print 'finished'
-
-            if isinstance(alert, lt.torrent_added_alert):
-                logging.info('torrent_added_alert')
 
             if isinstance(alert, lt.metadata_received_alert):
                 logging.info('metadata_received_alert')
@@ -185,7 +175,7 @@ class DHTCollector(object):
                 DHT网路中一个Node对本Node上的一条info-hash认领
                 '''
                 logging.info('dht_announce_alert' + alert.message())
-                info_hash = alert.info_hash.to_string().encode('hex')
+                info_hash = str(alert.info_hash)
                 if info_hash in self._meta_list:
                     self._meta_list[info_hash] += 1
                 else:
@@ -197,7 +187,7 @@ class DHTCollector(object):
                 '''
                 其他DHT node向本node针对一条info-hash发起对接
                 '''
-                info_hash = alert.info_hash.to_string().encode('hex')
+                info_hash = str(alert.info_hash)
 
                 if info_hash in self._meta_list:
                     self._meta_list[info_hash] += 1
@@ -207,8 +197,8 @@ class DHTCollector(object):
                     self._current_meta_count += 1
                     self.add_magnet(session, alert.info_hash)
 
-            elif isinstance(alert, lt.torrent_removed_alert):
-                logging.info('removed torrent: '+alert.message())
+            elif isinstance(alert, lt.torrent_alert):
+                logging.info('torrent alert: '+alert.message())
 
             #################################
             # elif self._ALERT_TYPE_SESSION is not None and self._ALERT_TYPE_SESSION == session:
@@ -222,21 +212,18 @@ class DHTCollector(object):
         for port in range(begin_port, begin_port + self._session_nums):
             session = lt.session()
             #设置alerts接受的mask类型，默认只接收errors类型
+            #session.set_alert_mask(lt.alert.category_t.status_notification | lt.alert.category_t.progress_notification | lt.alert.category_t.error_notification)
             session.set_alert_mask(lt.alert.category_t.all_categories)
-            session.listen_on(port, port+10)
+
+	    session.listen_on(port, port+10)
 
             for router in DHT_ROUTER_NODES:
                 session.add_dht_router(router[0],router[1])
-
-            settings = session.get_settings()
-            settings['upload_rate_limit'] = self._upload_rate_limit
-            settings['download_rate_limit'] = self._download_rate_limit
-            settings['active_downloads'] = self._active_downloads
-            settings['auto_manage_startup'] = self._auto_manage_startup
-            settings['auto_manage_interval'] = self._auto_manage_interval
-            settings['dht_announce_interval'] = self._dht_announce_interval
-            settings['alert_queue_size'] = self._alert_queue_size
-            session.set_settings(settings)
+            
+	    session.set_download_rate_limit(self._download_rate_limit)
+	    session.set_upload_rate_limit(self._upload_rate_limit)
+	    session.set_alert_queue_size_limit(self._alert_queue_size)
+	    session.start_dht()
             self._sessions.append(session)
         return self._sessions
 
@@ -257,8 +244,7 @@ class DHTCollector(object):
                   'auto_managed': True,
                   'duplicate_is_error': True,
                   'info_hash': info_hash}
-
-        session.async_add_torrent(params)
+        session.add_torrent(params)
 
         # if self._ALERT_TYPE_SESSION == None:
             # self._ALERT_TYPE_SESSION = session
@@ -276,7 +262,7 @@ class DHTCollector(object):
                 request this session to POST state_update_alert
                 信息包含从上一次POST之后state有过改变的所有torrent的status_notification[one of alert mask category]
                 '''
-                session.post_torrent_updates()
+                #session.post_torrent_updates()
                 '''
                 session.pop_alerts & session.pop_alert
                 pop set_alert_mask所指定了的alerts
@@ -284,7 +270,13 @@ class DHTCollector(object):
                 pop_alert only pop errors or events which has occurred
                 每一次pop查询都需要与network线程进行一次双方通信【耗性能】
                 '''
-                self._handle_alerts(session, session.pop_alerts())
+		_alerts = []
+		_alert = True
+		while _alert:
+			_alerts.append(_alert)
+			_alert = session.pop_alert()
+            	_alerts.remove(True)
+	    	self._handle_alerts(session, _alerts)
             
             time.sleep(self._sleep_time)
             if show_interval > 0:
@@ -325,10 +317,7 @@ class DHTCollector(object):
             self._backup_result()
 
             # 测试是否到达退出时间
-            if self._never_stop or interval < self._exit_time:
-                print '\t',interval,'----',self._exit_time
-
-            elif interval >= self._exit_time:
+            if interval >= self._exit_time:
                 # stop
                 logging.info('stoped!')
                 break
@@ -358,5 +347,5 @@ if __name__ == '__main__':
                    stat_file=stat_file,
                    never_stop=never_stop)
     # 创建p2p客户端
-    sd.create_session(6881)
+    sd.create_session(8001)
     sd.start_work()
