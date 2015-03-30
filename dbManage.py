@@ -57,8 +57,13 @@ class DBManage():
 		torrent.info_hash = data['info_hash']
 		torrent.media_type = data['media_type']
 		torrent.files = data['files']
-		torrent.announce = data['announce']
-		torrent.announce_list = data['announce_list']
+		
+		if 'valid' in data:
+			torrent.valid = data['valid']
+
+		if 'announce' in data:
+			torrent.announce = data['announce']
+			torrent.announce_list = data['announce_list']
 
 		if 'creation_date' in data:
 			torrent.creation_date = data['creation_date']
@@ -100,7 +105,6 @@ class DBManage():
 				session.flush()
 
 			session.commit()
-			print 'Inserted'
 		else:
 			print 'Nope'
 

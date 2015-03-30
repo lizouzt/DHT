@@ -2,16 +2,15 @@
 
 import pdb
 import os, sys
-import json, time, re, logging, urllib2
-import traceback as tb
+import json, time, re, logging
 import libtorrent as lt
 from string import Template
 from bencode import bdecode
 from urllib2 import HTTPError
-#import dbManage
+import dbManage
 from settings import *
 
-#manage = dbManage.DBManage()
+manage = dbManage.DBManage()
 
 logging.basicConfig(level=logging.INFO,
                    # format='%(asctime)s [line: %(lineno)d] %(levelname)s %(message)s',
@@ -48,66 +47,44 @@ class DHTCollector(object):
                  session_nums=100,
                  delay_interval=40,
                  exit_time=2*10*60*60,
-                 result_file=None,
                  stat_file=None,
                  never_stop=False):
         self._session_nums = session_nums
         self._delay_interval = delay_interval
         self._exit_time = exit_time
-        self._result_file = result_file
         self._stat_file = stat_file
         self._never_stop = never_stop
-        self._backup_result()
-
-        try:
-            with open(self._result_file, 'rb') as f:
-                self._meta_list = json.load(f)
-        except Exception as err:
-            pass
-
-    def _backup_result(self):
-        back_file = '%s_%s' % (time.strftime('%Y%m%d%H'), self._result_file)
-        if not os.path.isfile(back_file):
-            os.system('cp %s %s' %
-                      (self._result_file,
-                       back_file))
 
     def _get_file_info_from_torrent(self, handle):
-        file_info = {}
+        meta = {}
         try:
-            torrent_info_obj = handle.get_torrent_info()
+            torrent_info = handle.get_torrent_info()
             
-            file_info['name'] = torrent_info_obj.name()
-            file_info['creator'] = torrent_info_obj.creator()
-            file_info['comment'] = torrent_info_obj.comment()
-            file_info['num_files'] = torrent_info_obj.num_files()
-            file_info['total_size'] = torrent_info_obj.total_size()
-            # file_info['creation_date'] = torrent_info_obj.creation_date()
-            file_info['info_hash'] = torrent_info_obj.info_hash().to_string().encode('hex')
+            meta['name'] = torrent_info.name()
+            meta['num_files'] = torrent_info.num_files()
+            meta['total_size'] = torrent_info.total_size()
+            meta['creation_date'] = time.mktime(torrent_info.creation_date().timetuple())
+            meta['info_hash'] = str(torrent_info.info_hash())
+            meta['valid'] = len(handle.get_peer_info())
 
-            file_info['media_type'] = None
-            file_info['files'] = []
+            meta['media_type'] = None
+            meta['files'] = []
 
-            for file in torrent_info_obj.files():
-                file_info['files'].append({
+            for file in torrent_info.files():
+                meta['files'].append({
                     'path': file.path,
                     'size': file.size
                 })
                 
-                if file_info['media_type'] is None and re.search(RVIDEO, file.path):
-                    file_info['media_type'] = 'video'
-                elif file_info['media_type'] is None and re.search(RAUDIO, file.path):
-                    file_info['media_type'] = 'audio'
-
-            file_info['files'] = json.dumps(file_info['files'], ensure_ascii=False)
+                if meta['media_type'] is None and re.search(RVIDEO, file.path):
+                    meta['media_type'] = 'video'
+                elif meta['media_type'] is None and re.search(RAUDIO, file.path):
+                    meta['media_type'] = 'audio'
+            meta['files'] = json.dumps(meta['files'], ensure_ascii=False)
 
         except Exception, e:
             logging.error('torrent_info_error: '+str(e))
-
-
-        print json.dumps(file_info, ensure_ascii=False)
-
-        #manage.saveTorrent(file_info)
+        manage.saveTorrent(meta)
 
     def _get_runtime(self, interval):
         day = interval / (60*60*24)
@@ -144,7 +121,6 @@ class DHTCollector(object):
     def _handle_alerts(self, session, alerts):
         while len(alerts):
             alert = alerts.pop()
-	    #pdb.set_trace()
             if isinstance(alert, lt.piece_finished_alert):
                 logging.info('piece_finished_alert')
                 print 'one piece...'
@@ -159,16 +135,10 @@ class DHTCollector(object):
                 handle = alert.handle
                 if handle and handle.is_valid():
                     self._get_file_info_from_torrent(handle)
-                    #不需要下载
                     session.remove_torrent(handle, True)
 
             if isinstance(alert, lt.metadata_failed_alert):
                 logging.info('metadata_failed_alert')
-                handle = alert.handle
-                if handle and handle.is_valid():
-                    self._get_file_info_from_torrent(handle)
-                    #不需要下载
-                    session.remove_torrent(handle, True)
 
             elif isinstance(alert, lt.dht_announce_alert):
                 '''
@@ -251,6 +221,14 @@ class DHTCollector(object):
 
         logging.info('Get torrent starting.')
 
+    def stop_work(self):
+        for session in self._sessions:
+            session.stop_dht()
+            torrents = session.get_torrents()
+            for torrent in torrents:
+                session.remove_torrent(torrent)
+        logging.info('Ended.')
+
     def start_work(self):
         # 清理屏幕
         logging.info('beggin!')
@@ -308,44 +286,44 @@ class DHTCollector(object):
             try:
                 with open(self._stat_file, 'wb') as f:
                     f.write('\n'.join(show_content))
-                with open(self._result_file, 'wb') as f:
-                    json.dump(self._meta_list, f)
             except Exception as err:
                 pass
 
-            # 每天结束备份结果文件
-            self._backup_result()
-
             # 测试是否到达退出时间
-            if interval >= self._exit_time:
-                # stop
-                logging.info('stoped!')
+            if interval >= self._exit_time: 
                 break
 
         # 销毁p2p客户端
-        for session in self._sessions:
-            torrents = session.get_torrents()
-            for torrent in torrents:
-                session.remove_torrent(torrent)
-        logging.info('Ended.')
+        self.stop_work()
+
+def main(opt, args):
+    sd = DHTCollector(stat_file=opt.stat_file,
+                   never_stop=(opt.never_stop == 'y'))
+    sd.create_session(opt.listen_port)
+    try:
+        sd.start_work()
+    except KeyboardInterrupt:
+        sd.stop_work()
+        exit()
+    except Exception, e:
+        print 'Service Error: ',e
 
 if __name__ == '__main__':
-    if len(sys.argv) < 3:
-        print 'argument err:'
-        print '\tpython dhtcollector.py result.json collector.state\n'
-        sys.exit(-1)
+    from optparse import OptionParser
 
-    result_file = sys.argv[1]
-    stat_file = sys.argv[2]
+    usage = 'usage: %prog [options] torrent1 torrent2 ...'
+    parser = OptionParser(usage=usage)
+    parser.add_option('-o', '--output_dir', action='store', type='string',
+                      dest='stat_file', default='info.stat', metavar='Stat-File', 
+                      help='save stat file to which directory')
 
-    never_stop = False
-    if len(sys.argv) == 4 and sys.argv[3] == 'roll':
-        never_stop = True
+    parser.add_option('-p', '--port', action='store', type='int',
+                     dest='listen_port', default=8001, metavar='LISTEN-PORT',
+                     help='the listen port')
 
-    # 创建采集对象
-    sd = DHTCollector(result_file=result_file,
-                   stat_file=stat_file,
-                   never_stop=never_stop)
-    # 创建p2p客户端
-    sd.create_session(8001)
-    sd.start_work()
+    parser.add_option('-e', '--never_stop', action='store', type='string',
+                     dest='never_stop', default='y', metavar='NEVER-STOP',
+                     help='the listen port')
+
+    options, args = parser.parse_args()
+    main(options, args)
