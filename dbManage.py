@@ -27,6 +27,7 @@ class DBManage():
 			print 'Connect to mysql success.'
 		except Exception,e:
 			print "Connect Mysql Engine Error %s" % str(e)
+			exit(-1)
 
 		metadata = MetaData(bind=self.db)
 		self.table_movies = Table('movies', metadata, autoload=True)

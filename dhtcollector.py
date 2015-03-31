@@ -3,6 +3,7 @@
 import pdb
 import os, sys
 import json, time, re, logging
+import datetime
 import libtorrent as lt
 from string import Template
 from bencode import bdecode
@@ -16,7 +17,7 @@ logging.basicConfig(level=logging.INFO,
                    # format='%(asctime)s [line: %(lineno)d] %(levelname)s %(message)s',
                    format='%(levelname)s %(message)s',
                    datefnt='%d %b %H:%M%S',
-                   filename='./collector.log',
+                   filename=('./%s-collector.log'% datetime.date.today().day),
                    filemode='wb')
 
 class DHTCollector(object):
