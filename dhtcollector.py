@@ -123,15 +123,12 @@ class DHTCollector(object):
         while len(alerts):
             alert = alerts.pop()
             if isinstance(alert, lt.piece_finished_alert):
-                logging.info('piece_finished_alert')
                 print 'one piece...'
 
             if isinstance(alert, lt.torrent_finished_alert):
-                logging.info('torrent_finished_alert')
                 print 'finished'
 
             if isinstance(alert, lt.metadata_received_alert):
-                logging.info('metadata_received_alert')
                 print 'metadata received'
                 handle = alert.handle
                 if handle and handle.is_valid():
@@ -139,13 +136,13 @@ class DHTCollector(object):
                     session.remove_torrent(handle, True)
 
             if isinstance(alert, lt.metadata_failed_alert):
-                logging.info('metadata_failed_alert')
+                print ('metadata_failed_alert')
 
             elif isinstance(alert, lt.dht_announce_alert):
                 '''
                 DHT网路中一个Node对本Node上的一条info-hash认领
                 '''
-                logging.info('dht_announce_alert' + alert.message())
+                print('dht_announce_alert' + alert.message())
                 info_hash = str(alert.info_hash)
                 if info_hash in self._meta_list:
                     self._meta_list[info_hash] += 1
@@ -169,7 +166,7 @@ class DHTCollector(object):
                     self.add_magnet(session, alert.info_hash)
 
             elif isinstance(alert, lt.torrent_alert):
-                logging.info('torrent alert: '+alert.message())
+                print('torrent alert: '+alert.message())
 
             #################################
             # elif self._ALERT_TYPE_SESSION is not None and self._ALERT_TYPE_SESSION == session:
@@ -220,7 +217,7 @@ class DHTCollector(object):
         # if self._ALERT_TYPE_SESSION == None:
             # self._ALERT_TYPE_SESSION = session
 
-        logging.info('Get torrent starting.')
+        print('Get torrent starting.')
 
     def stop_work(self):
         for session in self._sessions:
