@@ -16,7 +16,7 @@ logging.basicConfig(level=logging.INFO,
                    # format='%(asctime)s [line: %(lineno)d] %(levelname)s %(message)s',
                    format='%(levelname)s %(message)s',
                    datefnt='%d %b %H:%M%S',
-                   filename='./dhtcollector.log',
+                   filename='./collector.log',
                    filemode='wb')
 
 class DHTCollector(object):
@@ -311,7 +311,7 @@ def main(opt, args):
 if __name__ == '__main__':
     from optparse import OptionParser
 
-    usage = 'usage: %prog [options] torrent1 torrent2 ...'
+    usage = 'usage: %prog [options]'
     parser = OptionParser(usage=usage)
     parser.add_option('-o', '--output_dir', action='store', type='string',
                       dest='stat_file', default='info.stat', metavar='Stat-File', 
