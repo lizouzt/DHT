@@ -84,11 +84,11 @@ class DBManage():
 			Maker.configure(bind=self.db)
 			session = Maker()
 			try:
-				# if session.query(Torrents).filter_by(info_hash=torrent.info_hash).scalar() == None:
-				session.add(torrent)
-				session.flush()
-				session.commit()
-				print 'Inserted'
+				if session.query(Torrents).filter_by(info_hash=torrent.info_hash).scalar() == None:
+					session.add(torrent)
+					session.flush()
+					session.commit()
+					print 'Inserted'
 			except Exception,e:
 				print 'Insert Error',e
 		else:

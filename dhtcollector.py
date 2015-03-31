@@ -57,35 +57,38 @@ class DHTCollector(object):
         self._never_stop = never_stop
 
     def _get_file_info_from_torrent(self, handle):
-        meta = {}
         try:
+            meta = {}
             torrent_info = handle.get_torrent_info()
-            
+
+            meta['info_hash'] = str(torrent_info.info_hash())
             meta['name'] = torrent_info.name()
             meta['num_files'] = torrent_info.num_files()
             meta['total_size'] = torrent_info.total_size()
             meta['creation_date'] = time.mktime(torrent_info.creation_date().timetuple())
-            meta['info_hash'] = str(torrent_info.info_hash())
             meta['valid'] = len(handle.get_peer_info())
 
             meta['media_type'] = None
             meta['files'] = []
 
-            for file in torrent_info.files():
+            for _fd in torrent_info.files():
+                if 'file' not in _fd or 'size' not in _fd:
+                    continue
                 meta['files'].append({
-                    'path': file.path,
-                    'size': file.size
+                    'path': _fd.path,
+                    'size': _fd.size
                 })
                 
-                if meta['media_type'] is None and re.search(RVIDEO, file.path):
+                if meta['media_type'] is None and re.search(RVIDEO, _fd.path):
                     meta['media_type'] = 'video'
-                elif meta['media_type'] is None and re.search(RAUDIO, file.path):
+                elif meta['media_type'] is None and re.search(RAUDIO, _fd.path):
                     meta['media_type'] = 'audio'
+            
             meta['files'] = json.dumps(meta['files'], ensure_ascii=False)
+            manage.saveTorrent(meta)
 
         except Exception, e:
             logging.error('torrent_info_error: '+str(e))
-        manage.saveTorrent(meta)
 
     def _get_runtime(self, interval):
         day = interval / (60*60*24)
@@ -125,17 +128,17 @@ class DHTCollector(object):
             if isinstance(alert, lt.piece_finished_alert):
                 print 'one piece...'
 
-            if isinstance(alert, lt.torrent_finished_alert):
+            elif isinstance(alert, lt.torrent_finished_alert):
                 print 'finished'
 
-            if isinstance(alert, lt.metadata_received_alert):
+            elif isinstance(alert, lt.metadata_received_alert):
                 print 'metadata received'
                 handle = alert.handle
                 if handle and handle.is_valid():
                     self._get_file_info_from_torrent(handle)
                     session.remove_torrent(handle, True)
 
-            if isinstance(alert, lt.metadata_failed_alert):
+            elif isinstance(alert, lt.metadata_failed_alert):
                 print ('metadata_failed_alert')
 
             elif isinstance(alert, lt.dht_announce_alert):
@@ -168,6 +171,8 @@ class DHTCollector(object):
             elif isinstance(alert, lt.torrent_alert):
                 print('torrent alert: '+alert.message())
 
+            else:
+                pass
             #################################
             # elif self._ALERT_TYPE_SESSION is not None and self._ALERT_TYPE_SESSION == session:
             #    logging.info('********Alert message: '+ alert.message() + '    Alert category: ' + str(alert.category()))
