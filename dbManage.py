@@ -32,6 +32,10 @@ class DBManage():
 		metadata = MetaData(bind=self.db)
 		self.table_movies = Table('movies', metadata, autoload=True)
 		self.table_torrents = Table('torrents', metadata, autoload=True)
+		
+		self.Maker = sessionmaker()
+		self.Maker.configure(bind=self.db)
+
 		mapper_movies = mapper(Movie, self.table_movies)
 		mapper_torrent = mapper(Torrents, self.table_torrents)
 
@@ -80,10 +84,8 @@ class DBManage():
 		torrent = self.reflectTorrentObject(data)
 
 		if torrent is not None:
-			Maker = sessionmaker()
-			Maker.configure(bind=self.db)
-			session = Maker()
 			try:
+				session = self.Maker()
 				if session.query(Torrents).filter_by(info_hash=torrent.info_hash).scalar() == None:
 					session.add(torrent)
 					session.flush()
