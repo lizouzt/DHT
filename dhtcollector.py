@@ -15,39 +15,28 @@ from settings import *
 manage = dbManage.DBManage()
 
 logging.basicConfig(level=logging.INFO,
-                   # format='%(asctime)s [line: %(lineno)d] %(levelname)s %(message)s',
-                   format='%(levelname)s %(message)s',
+                   format='%(asctime)s [line: %(lineno)d] %(levelname)s %(message)s',
                    datefnt='%d %b %H:%M%S',
                    filename=('./%s-collector.log'% datetime.date.today().day),
                    filemode='wb')
 
+_upload_rate_limit = 10000
+_download_rate_limit = 1000
+_alert_queue_size = 2000
+
 class DHTCollector(object):
-    _upload_rate_limit = 10000
-    _download_rate_limit = 10000
-    _active_downloads = 30
-    _alert_queue_size = 2000
-    _dht_announce_interval = 60
-    _torrent_upload_limit = 10000
-    _torrent_download_limit = 20000
-    _auto_manage_startup = 30
-    _auto_manage_interval = 15
     _ALERT_TYPE_SESSION = None
     _sleep_time = 2
     _sessions = []
-    _infohash_queue_from_getpeers = []
-    _info_hash_set = {}
-    _current_meta_count = 0
     _meta_list = {}
     _end = False
 
     def __init__(self,
 		 port,
                  session_num,
-                 reborn_count,
-                 stat_file):
+                 reborn_count):
 	self._reborn_interval = reborn_count
         self._session_num = session_num
-        self._stat_file = stat_file
 	self._port = port
         self.begin_time = time.time()
 
@@ -89,19 +78,6 @@ class DHTCollector(object):
         except Exception, e:
 		logging.error('torrent_info_error: '+str(e))
 
-    def _get_runtime(self, interval):
-        day = interval / (60*60*24)
-        interval = interval % (60*60*24)
-        hour = interval / (60*60)
-        interval = interval % (60*60)
-        minute = interval / 60
-        interval = interval % 60
-        second = interval
-        return 'day: %d, hour: %d, minute: %d, second: %d' % \
-               (day, hour, minute, second)
-
-    # 辅助函数
-    # 事件通知处理函数
     '''
     alert logic doc:
     1:get a info_hash from DHT peer
@@ -123,7 +99,6 @@ class DHTCollector(object):
     '''
     def _remove_torrent(self, session, alert):
 	try:
-		#if alert.handle.is_valid():
 		session.remove_torrent(alert.handle,1)
 		print '_remove'
 	except Exception,e:
@@ -138,15 +113,10 @@ class DHTCollector(object):
 	    elif isinstance(alert, lt.read_piece_alert):
 		print 'read_piece'
 		self._remove_torrent(session, alert)
-	    elif isinstance(alert, lt.piece_finished_alert):
-		print 'piece_finished'
-		self._remove_torrent(session, alert)
-
             elif isinstance(alert, lt.torrent_finished_alert):
                 print 'finished'
 
  	    elif isinstance(alert, lt.state_changed_alert):
-		#session.remove_torrent(alert.handle, 1)
 		pass
 
             elif isinstance(alert, lt.metadata_received_alert):
@@ -159,34 +129,19 @@ class DHTCollector(object):
 			print 'remove error: ',e
 
             elif isinstance(alert, lt.metadata_failed_alert):
-                #print ('metadata_failed_alert')
 		self._remove_torrent(session, alert)
 
             elif isinstance(alert, lt.dht_announce_alert):
-                '''
-                DHT网路中一个Node对本Node上的一条info-hash认领
-                '''
-                #print('dht_announce_alert' + alert.message())
                 info_hash = str(alert.info_hash)
-                if info_hash in self._meta_list:
-                    self._meta_list[info_hash] += 1
-                else:
-                    self._meta_list[info_hash] = 1
-                    self._current_meta_count += 1
+                if info_hash not in self._meta_list:
+                    self._meta_list.append(info_hash)
                     self.add_magnet(session, alert.info_hash)
 
             elif isinstance(alert, lt.dht_get_peers_alert):
-                '''
-                其他DHT node向本node针对一条info-hash发起对接
-                '''
                 info_hash = str(alert.info_hash)
 
-                if info_hash in self._meta_list:
-                    self._meta_list[info_hash] += 1
-                else:
-                    self._infohash_queue_from_getpeers.append(info_hash)
-                    self._meta_list[info_hash] = 1
-                    self._current_meta_count += 1
+                if info_hash not in self._meta_list:
+                    self._meta_list.append(info_hash)
                     self.add_magnet(session, alert.info_hash)
 
             elif isinstance(alert, lt.torrent_alert):
@@ -218,7 +173,6 @@ class DHTCollector(object):
 	except Exception:
 		pass
 
-    # 创建 session 对象
     def create_session(self):
 	begin_port = self._port
         for port in range(begin_port, begin_port + self._session_num):
@@ -231,16 +185,15 @@ class DHTCollector(object):
             for router in DHT_ROUTER_NODES:
                 session.add_dht_router(router[0],router[1])
             
-	    session.set_download_rate_limit(self._download_rate_limit)
-	    session.set_upload_rate_limit(self._upload_rate_limit)
-	    session.set_alert_queue_size_limit(self._alert_queue_size)
+	    session.set_download_rate_limit(_download_rate_limit)
+	    session.set_upload_rate_limit(_upload_rate_limit)
+	    session.set_alert_queue_size_limit(_alert_queue_size)
 	    session.start_dht()
             self._sessions.append(session)
         return self._sessions
 
     def reborn_work(self):
 	self.stop_work()
-	self.output_stat()
 	self._sessions = []
 	if not self._end:
 		print 'Reborn.'
@@ -274,35 +227,8 @@ class DHTCollector(object):
             
             time.sleep(self._sleep_time)
 
-    def output_stat(self):
-        # 统计信息显示
-        show_content = ['dht:']
-        interval = time.time() - self.begin_time
-        show_content.append('  pid: %s' % os.getpid())
-        show_content.append('  time: %s' %
-                            time.strftime('%Y-%m-%d %H:%M:%S'))
-        show_content.append('  run time: %s' % self._get_runtime(interval))
-        show_content.append('  start port: %d' % self._port)
-        show_content.append('  collect session num: %d' %
-                            len(self._sessions))
-        show_content.append('  info hash nums from get peers: %d' %
-                            len(self._infohash_queue_from_getpeers))
-        show_content.append('  torrent collection rate: %f /minute' %
-                            (self._current_meta_count * 60 / interval))
-        show_content.append('  current torrent count: %d' %
-                            self._current_meta_count)
-        show_content.append('  total torrent count: %d' %
-                            len(self._meta_list))
-        show_content.append('\n')
-        
-	try:
-            with open(self._stat_file, 'wb') as f:
-                f.write('\n'.join(show_content))
-        except Exception as err:
-		pass
-
 def main(opt, args):
-    sd = DHTCollector(stat_file=opt.stat_file, port=opt.listen_port, reborn_count=opt.reborn_count, session_num=opt.session_num)
+    sd = DHTCollector(port=opt.listen_port, reborn_count=opt.reborn_count, session_num=opt.session_num)
 
     Timer(sd._reborn_interval, sd.reborn_work).start()
     try:
@@ -322,16 +248,13 @@ if __name__ == '__main__':
 
     usage = 'usage: %prog [options]'
     parser = OptionParser(usage=usage)
-    parser.add_option('-o', '--stat-file-dir', action='store', type='string',
-                      dest='stat_file', default='info.stat', metavar='Stat-File', 
-                      help='save stat file to which directory')
 
     parser.add_option('-p', '--port', action='store', type='int',
                      dest='listen_port', default=8001, metavar='LISTEN-PORT',
                      help='the listen port')
 
     parser.add_option('-t', '--reborn', action='store', type='int',
-                     dest='reborn_count', default=300, metavar='REBORN-INTERVAL',
+                     dest='reborn_count', default=3600, metavar='REBORN-INTERVAL',
                      help='the reborn timer count')
     
     parser.add_option('-n', '--snum', action='store', type='int',

@@ -6,50 +6,31 @@ Created on 2015-04-01
 '''
 import pdb
 import os,sys,time,logging,json,re 
-import urllib2
 import socket
-import StringIO
-import gzip
-import hashlib
-import chardet
+from bencode import bdecode
 from datetime import date
-from string import Template
-from threading import Timer,Thread
+from threading import Timer
 from utils import get_time_formatter
-from dbManage import DBManage
 from settings import *
 
-OUTPUT_STATFILE = 60
+OUTPUT_STATFILE = 10
 END = False
-MANAGE = DBManage()
 
 class Statistic(object):
     """download data statistic"""
-    def __init__(self, file_name):
-        super(Statistic, self).__init__()
-        self.begin_time = time.time()
-        self.logMsg = {
-            1: "received tcp request",
-            2: "TCP invalid msg from: %s::%d",
-            3: "Bdecode Failed %s",
-            4: "Server couldn't fullfill the request. Error code: %s",
-            5: "Failed to reach. Reason: %s",
-            6: "BT download error: %s",
-            7: "Meta decode error: %s",
-        }
-        self._count_success = 0
-        self._count_receive_tcp = 0
-        self._count_invalid_msg = 0
-        self._count_bdecode_error = 0
-        self._count_btdownload_error = 0
-        self._count_decode_error = 0
+    begin_time = time.time()
+    _count_insert = {}
+    _count_error = {}
+    _count_invalid_msg = 0
+    def __init__(self, file_name='dht.stat'):
         self._stat_file = file_name
         Timer(OUTPUT_STATFILE, self.output_stat).start()
         self.initLogger()
+        self.start()
 
     def initLogger(self):
-        self.logger = logging.getLogger('btAnalyzer')
-        fh = logging.FileHandler('log-downloader-%s.log' % date.today(), 'wb')
+        self.logger = logging.getLogger('statistic')
+        fh = logging.FileHandler('log-statistic-%s.log' % date.today(), 'wb')
         sh = logging.StreamHandler()
 
         fhFmt = logging.Formatter('%(asctime)s [line: %(lineno)d] %(levelname)s %(message)s')
@@ -64,18 +45,28 @@ class Statistic(object):
 
     def output_stat(self):
         global END
+
+        total_success = 0
+        total_error = 0
+        individualData = ''
+        for host in self._count_insert:
+            total_success += self._count_insert[host]
+            individualData += '  Host %s Success: %d \n' % (host,self._count_insert[host])
+        for host in self._count_error:
+            total_error += self._count_error[host]
+            individualData += '  Host %s Errors: %d \n' % (host,self._count_error[host])
+
         content = ['torrents:']
         interval = time.time() - self.begin_time
-        content.append('  PID: %s' % os.getpid())
-        content.append('  Time: %s' % time.strftime('%Y-%m-%d %H:%M:%S'))
-        content.append('  Run time: %s' % get_time_formatter(interval))
-        content.append('  Get BT nums: %d' % self._count_success)
-        content.append('  Get TCP nums: %d' % self._count_receive_tcp)
-        content.append('  Get invalid TCP nums: %d' % self._count_invalid_msg)
-        content.append('  DownLoad error nums: %d' % self._count_btdownload_error)
-        content.append('  BDecode error nums: %d'% self._count_bdecode_error)
-        content.append('  Meta decode error nums: %d' % self._count_decode_error)
+        content.append('  PID: %s \n' % os.getpid())
+        content.append('  Time: %s \n' % time.strftime('%Y-%m-%d %H:%M:%S'))
+        content.append('  Run time: %s \n' % get_time_formatter(interval))
+        content.append('  Get invalid TCP nums: %d \n' % self._count_invalid_msg)
+        content.append('  Get BT nums: %d \n' % total_success)
+        content.append('  Error nums: %d \n' % total_error)
+        content.append(individualData)
         content.append('\n')
+
         try:
             with open(self._stat_file, 'wb') as f:
                 f.write('\n'.join(content))
@@ -85,12 +76,14 @@ class Statistic(object):
         if not END: 
             Timer(OUTPUT_STATFILE, self.output_stat).start()
         else:
-            exit()
+            exit(1)
 
-    def log(self, info, *args, **kwargs):
+    def log(self, info, *dic, **kwargs):
         t = 'info'
         if kwargs.has_key('type'):
             t = kwargs['type']
+        dic = dic[0] if dic is not () else ()
+
         log = self.logger.info
         if t == 'error':
             log = self.logger.error
@@ -98,28 +91,57 @@ class Statistic(object):
             log = self.logger.warning
         elif t == 'debug':
             log = self.logger.debug
-        log(info % args)
+        log(info % dic)
 
     def record(self, t, *dic):
         if t is None:
             return -1
         elif t == 0:
-            self._count_success += 1
+            if dic[0] not in self._count_insert:
+                self._count_insert[dic[0]] = 1
+            else:
+                self._count_insert[dic[0]] += 1
         elif t == 1:
-            self._count_receive_tcp += 1
+            if dic[0] not in self._count_error:
+                self._count_error[dic[0]] = 1
+            else:
+                self._count_error[dic[0]] += 1
+            self.log('DB Err from: %s ---> %s', dic, type='error')
         elif t == 2:
             self._count_invalid_msg += 1
-            self.log(self.logMsg[t], dic, type='error')
-        elif t == 3:
-            self._count_bdecode_error += 1
-            self.log(self.logMsg[t], dic, type='error')
-        elif t in (5,6):
-            self._count_btdownload_error += 1
-            self.log(self.logMsg[t], dic, type='info')
-        elif t == 4:
-            self._count_btdownload_error += 1
-        elif t == 7:
-            self.log(self.logMsg[t], dic, type="warning")
-            self._count_decode_error += 1
+            self.log('invalid tcp message from %s::%d', dic, type='error')
         else:
-            pas
+            pass
+
+    def check_token(self, data, address):
+        info = bdecode(data)
+        if info.has_key('t') and info['t'] == TOKEN:
+            if info['i'] == '0':
+                self.record(0, address[0])
+            elif info['i'] == '1':
+                self.record(1, address[0], info['m'])
+        else:
+            self.record(2, address[0], address[1])
+
+    def start(self):
+        global END
+        self.log('Start.')
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        sock.bind(("0.0.0.0", DLPORT))
+        while True:
+            try:
+                (data, address) = sock.recvfrom(256)
+                if data: self.check_token(data, address)
+            except KeyboardInterrupt:
+                self.log('STOPPED')
+                sock.close()
+                END = True
+                exit(1)
+            except Exception,e:
+                print e
+
+if __name__ == '__main__':
+    if len(sys.argv) == 3:
+        Statistic(sys.argv[1])
+    else:
+        Statistic()

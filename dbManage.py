@@ -5,7 +5,11 @@ Created on 2014-11-30
 @author: Elfer
 '''
 import pdb
+import os
+import socket
+from bencode import bencode, bdecode
 from sqlalchemy import *
+from sqlalchemy import exc as EXC
 from sqlalchemy.orm import mapper,sessionmaker,create_session
 from settings import *
 
@@ -15,29 +19,50 @@ class Movie(object):
 class Torrents(object):
 	pass
 
-class DBManage():
+class DataLog(object):
+	"""docstring for DataLog"""
+	def __init__(self, port=9998):
+		super(DataLog, self).__init__()
+		self.socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+		self.socket.bind(("0.0.0.0", port))
+
+	def send_log(msg, address=(DLHOST,DLPORT)):
+		msg['t'] = TOKEN
+		try:
+			self.socket.sendto(bencode(msg), address)
+		except Exception,e:
+			pass
+
+class DBManage(DataLog):
 	DEFAULT_VAL = '未知'
+	CMD = 'sh flush.sh %s %s %s' % (MQSERVER, MQUSER, MQPWD)
 	db = None
 	def __init__(self):
-		####
-		#sqlalchemy.create_engine('mysql://user:password@127.0.0.1/test?charset=utf8')
-		####
+		DataLog.__init__(self)
+		self.conDB()
+		metadata = MetaData(bind=self.db)
+		self.table_movies = Table('movies', metadata, autoload=True)
+		self.table_torrents = Table('torrents', metadata, autoload=True)
+
+		mapper_movies = mapper(Movie, self.table_movies)
+		mapper_torrent = mapper(Torrents, self.table_torrents)
+
+	def conDB(self, need_flush=False):
 		try:
 			self.db = create_engine("mysql://%s:%s@%s/%s?charset=utf8" % (MQUSER, MQPWD, MQSERVER, MQDB))
 			print 'Connect to mysql success.'
 		except Exception,e:
 			print "Connect Mysql Engine Error %s" % str(e)
+			self.send_log({
+				'i': 1,
+				'm': "Connect Mysql Engine Error %s" % str(e)
+			})
 			exit(-1)
 
-		metadata = MetaData(bind=self.db)
-		self.table_movies = Table('movies', metadata, autoload=True)
-		self.table_torrents = Table('torrents', metadata, autoload=True)
-		
 		self.Maker = sessionmaker()
 		self.Maker.configure(bind=self.db)
 
-		mapper_movies = mapper(Movie, self.table_movies)
-		mapper_torrent = mapper(Torrents, self.table_torrents)
+		need_flush and os.system(self.CMD)
 
 	def reflectMovieObject(self, data):
 		movie = Movie()
@@ -91,8 +116,23 @@ class DBManage():
 					session.flush()
 					session.commit()
 					print 'Inserted'
+					self.send_log({
+						'i': 0,
+						'm': "DisconnectionError %s" % str(e)
+					})
+			except EXC.DisconnectionError,e:
+				print 'DisconnectionError: ',e
+				self.send_log({
+					'i': 1,
+					'm': "DisconnectionError %s" % str(e)
+				})
+				self.conDB(True)
 			except Exception,e:
-				print 'Insert Error',e
+				print 'Insert Error',str(e)
+				self.send_log({
+					'i': 1,
+					'm': "Insert Error %s" % str(e)
+				})
 		else:
 			print 'Nope'
 
