@@ -28,7 +28,7 @@ class DHTCollector(object):
     _ALERT_TYPE_SESSION = None
     _sleep_time = 2
     _sessions = []
-    _meta_list = {}
+    _meta_list = []
     _end = False
 
     def __init__(self,
