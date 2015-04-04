@@ -237,6 +237,7 @@ def main(opt, args):
         sd.start_work()
     except KeyboardInterrupt:
         sd.stop_work()
+        manage.socket.close()
 	sd._end = True
 	print 'Interrupted!'
         exit()
