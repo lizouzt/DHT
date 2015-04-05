@@ -136,14 +136,16 @@ class Statistic(object):
             if _time - self.FLUSHSTAMP > 600:
                 self.FLUSHSTAMP = _time
                 os.system(CMD)
-                return
+                print 'Flushed'
+                return False
         return _func
 
     def check_token(self, data, address):
         info = bdecode(data)
         if info.has_key('t') and info['t'] == TOKEN:
             _ref = info['r'] if info.has_key('r') else ''
-            self.referer(_ref)(info,address)
+            _func = self.referer(_ref)
+            _func and (info,address)
         else:
             self.record(2, address[0], address[1])
 

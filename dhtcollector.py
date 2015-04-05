@@ -202,7 +202,7 @@ class DHTCollector(object):
 
     def start_work(self):
         while True and not self._end:
-            print '*'*40
+            _length = 0
             for session in self._sessions:
                 '''
                 request this session to POST state_update_alert
@@ -218,11 +218,13 @@ class DHTCollector(object):
                 _alerts.remove(True)
                 self._handle_alerts(session, _alerts)
                 _ths = session.get_torrents()
+                _length += len(_ths)
                 for th in _ths:
                     status = th.status()
                     if str(status.state) == 'downloading' and status.progress > 1e-10:
                         print 'delete %.20f'%status.progress
                         session.remove_torrent(th,1)
+            print '*'*10,_length
             time.sleep(self._sleep_time)
 
 def main(opt, args):
