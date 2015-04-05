@@ -51,10 +51,8 @@ class DBManage(DataLog):
 			self.db = create_engine("mysql://%s:%s@%s/%s?charset=utf8" % (MQUSER, MQPWD, MQSERVER, MQDB))
 		except Exception,e:
 			print "ConnectionError %s" % str(e)
-			self.send_log({
-				'r': 'needrestart',
-				'i': '1'
-			})
+
+		need_flush and self.send_log({'r': 'needrestart','i': '1'})
 
 	def reflectMovieObject(self, data):
 		movie = Movie()
@@ -115,6 +113,7 @@ class DBManage(DataLog):
 					'i': '0'
 				})
 			except (EXC.DisconnectionError,EXC.OperationalError) as e:
+				print 'ConnectionError',e.message
 				self.send_log({
 					'r': 'dht',
 					'i': '1',
