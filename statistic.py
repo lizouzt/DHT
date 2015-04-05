@@ -145,7 +145,7 @@ class Statistic(object):
         if info.has_key('t') and info['t'] == TOKEN:
             _ref = info['r'] if info.has_key('r') else ''
             _func = self.referer(_ref)
-            _func and (info,address)
+            _func and _func(info,address)
         else:
             self.record(2, address[0], address[1])
 
