@@ -103,15 +103,15 @@ class DBManage(DataLog):
 			Maker.configure(bind=self.db)
 			try:
 				session = Maker()
-				# if session.query(Torrents).filter_by(info_hash=torrent.info_hash).scalar() == None:
-				session.add(torrent)
-				session.flush()
-				session.commit()
-				print 'Inserted'
-				self.send_log({
-					'r': 'dht',
-					'i': '0'
-				})
+				if session.query(Torrents).filter_by(info_hash=torrent.info_hash).scalar() == None:
+					session.add(torrent)
+					session.flush()
+					session.commit()
+					print 'Inserted'
+					self.send_log({
+						'r': 'dht',
+						'i': '0'
+					})
 			except (EXC.DisconnectionError,EXC.OperationalError) as e:
 				print 'ConnectionError',e.message
 				self.send_log({
@@ -119,7 +119,7 @@ class DBManage(DataLog):
 					'i': '1',
 					'm': "ConnectionError %s" % str(e.message)
 				})
-				self.conDB(True)
+				self.conDB()
 			except Exception,e:
 				print 'Insert Error',str(e.message)
 				self.send_log({
