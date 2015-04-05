@@ -20,22 +20,21 @@ logging.basicConfig(level=logging.INFO,
                    filename=('./%s-collector.log'% datetime.date.today().day),
                    filemode='wb')
 
-_upload_rate_limit = 10000
-_download_rate_limit = 1000
+_upload_rate_limit = 100000
+_download_rate_limit = 200000
 _alert_queue_size = 2000
+_max_connections = 100
 
 class DHTCollector(object):
     _ALERT_TYPE_SESSION = None
-    _sleep_time = 2
+    _sleep_time = 1
     _sessions = []
     _meta_list = []
     _end = False
 
     def __init__(self,
 		 port,
-                 session_num,
-                 reborn_count):
-	self._reborn_interval = reborn_count
+                 session_num):
         self._session_num = session_num
 	self._port = port
         self.begin_time = time.time()
@@ -73,7 +72,8 @@ class DHTCollector(object):
                     meta['media_type'] = 'audio'
             
             meta['files'] = json.dumps(meta['files'], ensure_ascii=False)
-            manage.saveTorrent(meta)
+            Thread(target=manage.saveTorrent, args=[meta]).start()
+            #manage.saveTorrent(meta)
 
         except Exception, e:
 		logging.error('torrent_info_error: '+str(e))
@@ -100,7 +100,6 @@ class DHTCollector(object):
     def _remove_torrent(self, session, alert):
 	try:
 		session.remove_torrent(alert.handle,1)
-		print '_remove'
 	except Exception,e:
 		print '_remove error:',e
 
@@ -108,28 +107,23 @@ class DHTCollector(object):
         while len(alerts):
             alert = alerts.pop()
             if isinstance(alert, lt.piece_finished_alert):
-		print 'piece_finished'
-		self._remove_torrent(session, alert)
-	    elif isinstance(alert, lt.read_piece_alert):
-		print 'read_piece'
-		self._remove_torrent(session, alert)
+                self._remove_torrent(session, alert)
+            elif isinstance(alert, lt.read_piece_alert):
+                self._remove_torrent(session, alert)
             elif isinstance(alert, lt.torrent_finished_alert):
                 print 'finished'
-
- 	    elif isinstance(alert, lt.state_changed_alert):
-		pass
 
             elif isinstance(alert, lt.metadata_received_alert):
                 handle = alert.handle
                 if handle and handle.is_valid():
                     self._get_file_info_from_torrent(handle)
-		    try:
-                    	session.remove_torrent(handle, 1)
-		    except Exception,e:
-			print 'remove error: ',e
+                try:
+                    session.remove_torrent(handle, 1)
+                except Exception,e:
+                    print 'remove error: ',e
 
             elif isinstance(alert, lt.metadata_failed_alert):
-		self._remove_torrent(session, alert)
+                self._remove_torrent(session, alert)
 
             elif isinstance(alert, lt.dht_announce_alert):
                 info_hash = str(alert.info_hash)
@@ -139,14 +133,12 @@ class DHTCollector(object):
 
             elif isinstance(alert, lt.dht_get_peers_alert):
                 info_hash = str(alert.info_hash)
-
                 if info_hash not in self._meta_list:
                     self._meta_list.append(info_hash)
                     self.add_magnet(session, alert.info_hash)
 
             elif isinstance(alert, lt.torrent_alert):
-                #print('torrent alert: '+alert.message())
-		pass
+                pass
             else:
                 pass
             #################################
@@ -174,34 +166,32 @@ class DHTCollector(object):
 		pass
 
     def create_session(self):
-	begin_port = self._port
+        begin_port = self._port
         for port in range(begin_port, begin_port + self._session_num):
             session = lt.session()
             #session.set_alert_mask(lt.alert.category_t.status_notification | lt.alert.category_t.stats_notification | lt.alert.category_t.progress_notification | lt.alert.category_t.tracker_notification | lt.alert.category_t.dht_notification | lt.alert.category_t.progress_notification | lt.alert.category_t.error_notification)
             session.set_alert_mask(lt.alert.category_t.all_categories)
-
-	    session.listen_on(port, port+10)
-
+            session.listen_on(port, port+10)
             for router in DHT_ROUTER_NODES:
                 session.add_dht_router(router[0],router[1])
-            
-	    session.set_download_rate_limit(_download_rate_limit)
-	    session.set_upload_rate_limit(_upload_rate_limit)
-	    session.set_alert_queue_size_limit(_alert_queue_size)
-	    session.start_dht()
+            session.set_download_rate_limit(_download_rate_limit)
+            session.set_upload_rate_limit(_upload_rate_limit)
+            session.set_alert_queue_size_limit(_alert_queue_size)
+            session.set_max_connections(_max_connections)
+            session.start_dht()
             self._sessions.append(session)
         return self._sessions
 
     def reborn_work(self):
-	self.stop_work()
-	self._sessions = []
-	if not self._end:
-		print 'Reborn.'
-    		Timer(self._reborn_interval, self.reborn_work).start()
-        	self.create_session()
-	else:
-		print 'End.'
-		exit()
+        self.stop_work()
+        self._sessions = []
+        if not self._end:
+            print 'Reborn.'
+            Timer(3600, self.reborn_work).start()
+            self.create_session()
+        else:
+            print 'End.'
+            exit()
 
     def stop_work(self):
         for session in self._sessions:
@@ -211,35 +201,41 @@ class DHTCollector(object):
                 session.remove_torrent(torrent,1)
 
     def start_work(self):
-	while True and not self._end:
+        while True and not self._end:
+            print '*'*40
             for session in self._sessions:
                 '''
                 request this session to POST state_update_alert
                 '''
                 #session.post_torrent_updates()
-		_alerts = []
-		_alert = True
-		while _alert:
-			_alerts.append(_alert)
-			_alert = session.pop_alert()
-            	_alerts.remove(True)
-	    	self._handle_alerts(session, _alerts)
-            
+                _alerts = []
+                _alert = True
+                
+                while _alert:
+                    _alerts.append(_alert)
+                    _alert = session.pop_alert()
+                
+                _alerts.remove(True)
+                self._handle_alerts(session, _alerts)
+                _ths = session.get_torrents()
+                for th in _ths:
+                    status = th.status()
+                    if str(status.state) == 'downloading' and status.progress > 1e-10:
+                        print 'delete %.20f'%status.progress
+                        session.remove_torrent(th,1)
             time.sleep(self._sleep_time)
 
 def main(opt, args):
-    sd = DHTCollector(port=opt.listen_port, reborn_count=opt.reborn_count, session_num=opt.session_num)
-
-    Timer(sd._reborn_interval, sd.reborn_work).start()
+    sd = DHTCollector(port=opt.listen_port, session_num=opt.session_num)
     try:
-	print 'Start.'
-	sd.create_session()
+        print 'Start.'
+        sd.create_session()
         sd.start_work()
     except KeyboardInterrupt:
         sd.stop_work()
         manage.socket.close()
-	sd._end = True
-	print 'Interrupted!'
+        sd._end = True
+        print 'Interrupted!'
         exit()
     except Exception, e:
         print 'Service Error: ',e
@@ -253,10 +249,6 @@ if __name__ == '__main__':
     parser.add_option('-p', '--port', action='store', type='int',
                      dest='listen_port', default=8001, metavar='LISTEN-PORT',
                      help='the listen port')
-
-    parser.add_option('-t', '--reborn', action='store', type='int',
-                     dest='reborn_count', default=3600, metavar='REBORN-INTERVAL',
-                     help='the reborn timer count')
     
     parser.add_option('-n', '--snum', action='store', type='int',
                      dest='session_num', default=50, metavar='SESSION-NUM',

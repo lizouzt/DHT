@@ -26,7 +26,7 @@ class DataLog(object):
 		self.socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 		self.socket.bind(("0.0.0.0", port))
 
-	def send_log(msg, address=(DLHOST,DLPORT)):
+	def send_log(self, msg, address=(DLHOST,DLPORT)):
 		msg['t'] = TOKEN
 		try:
 			self.socket.sendto(bencode(msg), address)
@@ -35,7 +35,6 @@ class DataLog(object):
 
 class DBManage(DataLog):
 	DEFAULT_VAL = '未知'
-	CMD = 'sh flush.sh %s %s %s' % (MQSERVER, MQUSER, MQPWD)
 	db = None
 	def __init__(self):
 		DataLog.__init__(self)
@@ -50,19 +49,12 @@ class DBManage(DataLog):
 	def conDB(self, need_flush=False):
 		try:
 			self.db = create_engine("mysql://%s:%s@%s/%s?charset=utf8" % (MQUSER, MQPWD, MQSERVER, MQDB))
-			print 'Connect to mysql success.'
 		except Exception,e:
-			print "Connect Mysql Engine Error %s" % str(e)
+			print "ConnectionError %s" % str(e)
 			self.send_log({
-				'i': 1,
-				'm': "Connect Mysql Engine Error %s" % str(e)
+				'r': 'needrestart',
+				'i': '1'
 			})
-			exit(-1)
-
-		self.Maker = sessionmaker()
-		self.Maker.configure(bind=self.db)
-
-		need_flush and os.system(self.CMD)
 
 	def reflectMovieObject(self, data):
 		movie = Movie()
@@ -109,29 +101,32 @@ class DBManage(DataLog):
 		torrent = self.reflectTorrentObject(data)
 
 		if torrent is not None:
+			Maker = sessionmaker()
+			Maker.configure(bind=self.db)
 			try:
-				session = self.Maker()
-				if session.query(Torrents).filter_by(info_hash=torrent.info_hash).scalar() == None:
-					session.add(torrent)
-					session.flush()
-					session.commit()
-					print 'Inserted'
-					self.send_log({
-						'i': 0,
-						'm': "DisconnectionError %s" % str(e)
-					})
-			except EXC.DisconnectionError,e:
-				print 'DisconnectionError: ',e
+				session = Maker()
+				# if session.query(Torrents).filter_by(info_hash=torrent.info_hash).scalar() == None:
+				session.add(torrent)
+				session.flush()
+				session.commit()
+				print 'Inserted'
 				self.send_log({
-					'i': 1,
-					'm': "DisconnectionError %s" % str(e)
+					'r': 'dht',
+					'i': '0'
+				})
+			except (EXC.DisconnectionError,EXC.OperationalError) as e:
+				self.send_log({
+					'r': 'dht',
+					'i': '1',
+					'm': "ConnectionError %s" % str(e.message)
 				})
 				self.conDB(True)
 			except Exception,e:
-				print 'Insert Error',str(e)
+				print 'Insert Error',str(e.message)
 				self.send_log({
-					'i': 1,
-					'm': "Insert Error %s" % str(e)
+					'r': 'dht',
+					'i': '1',
+					'm': "Insert Error %s" % str(e.message)
 				})
 		else:
 			print 'Nope'

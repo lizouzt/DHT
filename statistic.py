@@ -7,6 +7,7 @@ Created on 2015-04-01
 import pdb
 import os,sys,time,logging,json,re 
 import socket
+import time
 from bencode import bdecode
 from datetime import date
 from threading import Timer
@@ -15,9 +16,11 @@ from settings import *
 
 OUTPUT_STATFILE = 10
 END = False
+CMD = 'sh flush.sh %s %s %s' % (MQSERVER, MQUSER, MQPWD)
 
 class Statistic(object):
     """download data statistic"""
+    FLUSHSTAMP = time.time()
     begin_time = time.time()
     _count_insert = {}
     _count_error = {}
@@ -93,10 +96,11 @@ class Statistic(object):
             log = self.logger.debug
         log(info % dic)
 
-    def record(self, t, *dic):
+    def dht_record(self, t, *dic):
         if t is None:
             return -1
         elif t == 0:
+            print 'insert.'
             if dic[0] not in self._count_insert:
                 self._count_insert[dic[0]] = 1
             else:
@@ -113,13 +117,33 @@ class Statistic(object):
         else:
             pass
 
+    def dht_log_sys(self,info,address):
+        if info['i'] == '0':
+            self.dht_record(0, address[0])
+        elif info['i'] == '1':
+            self.dht_record(1, address[0], info['m'])
+        else:
+            pass
+
+    def referer(self, ref):
+        _func = self.dht_log_sys
+        if ref == 'dht':
+            _func = self.dht_log_sys
+        elif ref == 'web':
+            _func = self.web_log_sys
+        elif ref == 'needrestart':
+            _time = time.time()
+            if _time - self.FLUSHSTAMP > 600:
+                self.FLUSHSTAMP = _time
+                os.system(CMD)
+                return
+        return _func
+
     def check_token(self, data, address):
         info = bdecode(data)
         if info.has_key('t') and info['t'] == TOKEN:
-            if info['i'] == '0':
-                self.record(0, address[0])
-            elif info['i'] == '1':
-                self.record(1, address[0], info['m'])
+            _ref = info['r'] if info.has_key('r') else ''
+            self.referer(_ref)(info,address)
         else:
             self.record(2, address[0], address[1])
 
@@ -133,10 +157,10 @@ class Statistic(object):
                 (data, address) = sock.recvfrom(256)
                 if data: self.check_token(data, address)
             except KeyboardInterrupt:
-                self.log('STOPPED')
                 sock.close()
                 END = True
-                exit(1)
+                self.log('STOPPED')
+                exit()
             except Exception,e:
                 print e
 
