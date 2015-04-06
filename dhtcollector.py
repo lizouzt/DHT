@@ -21,19 +21,20 @@ logging.basicConfig(level=logging.INFO,
                    filename=('./%s-collector.log'% datetime.date.today().day),
                    filemode='wb')
 
-_upload_rate_limit = 100000
+THRESHOLD = 100
+_upload_rate_limit = 200000
 _download_rate_limit = 200000
-_alert_queue_size = 2000
-_max_connections = 100
-
+_alert_queue_size = 4000
+_max_connections = 200
 class DHTCollector(DataLog):
     _ALERT_TYPE_SESSION = None
     _the_delete_count = 0
     _the_got_count = 0
-    _sleep_time = 1
+    _sleep_time = 0.5
     _sessions = []
     _meta_list = []
     _end = False
+    _priv_th_queue = {}
 
     def __init__(self,port,session_num):
         DataLog.__init__(self,9997)
@@ -100,10 +101,10 @@ class DHTCollector(DataLog):
     13:download ended post torrent_finished_alert.
     '''
     def _remove_torrent(self, session, alert):
-	try:
-		session.remove_torrent(alert.handle,1)
-	except Exception,e:
-		print '_remove error:',e
+        try:
+            session.remove_torrent(alert.handle,1)
+        except Exception,e:
+            pass
 
     def _handle_alerts(self, session, alerts):
         while len(alerts):
@@ -122,22 +123,22 @@ class DHTCollector(DataLog):
                 try:
                     session.remove_torrent(handle, 1)
                 except Exception,e:
-                    print 'remove error: ',e
+                    pass
 
             elif isinstance(alert, lt.metadata_failed_alert):
                 self._remove_torrent(session, alert)
 
             elif isinstance(alert, lt.dht_announce_alert):
                 info_hash = str(alert.info_hash)
-                if info_hash not in self._meta_list:
-                    self._meta_list.append(info_hash)
-                    self.add_magnet(session, alert.info_hash)
+                #if info_hash not in self._meta_list:
+                #self._meta_list.append(info_hash)
+                self.add_magnet(session, alert.info_hash)
 
             elif isinstance(alert, lt.dht_get_peers_alert):
                 info_hash = str(alert.info_hash)
-                if info_hash not in self._meta_list:
-                    self._meta_list.append(info_hash)
-                    self.add_magnet(session, alert.info_hash)
+                #if info_hash not in self._meta_list:
+                #self._meta_list.append(info_hash)
+                self.add_magnet(session, alert.info_hash)
 
             elif isinstance(alert, lt.torrent_alert):
                 pass
@@ -178,37 +179,45 @@ class DHTCollector(DataLog):
                 session.add_dht_router(router[0],router[1])
             session.set_download_rate_limit(_download_rate_limit)
             session.set_upload_rate_limit(_upload_rate_limit)
-            #session.set_alert_queue_size_limit(_alert_queue_size)
-            session.set_max_connections(_max_connections)
+            session.set_alert_queue_size_limit(_alert_queue_size)
+            #session.set_max_connections(_max_connections)
+            #session.set_max_half_open_connections(_max_half_open_connections)
             session.start_dht()
-            session.start_upnp()
+            #session.start_natpmp()
             self._sessions.append(session)
         return self._sessions
 
-    def reborn_work(self):
-        self.stop_work()
-        self._sessions = []
-        if not self._end:
-            print 'Reborn.'
-            Timer(3600, self.reborn_work).start()
-            self.create_session()
-        else:
-            print 'End.'
-            exit()
+    def clean_passive_torrent(self):
+        _del_queue = []
+        ###################
+        for _ti, _conn in self._priv_th_queue.iteritems():
+            if _conn['p'] > 60:
+                _del_queue.append(_ti)
+                try:
+                    _conn['_session'].remove_torrent(_conn['_th'],1)
+                except Exception:
+                    pass
+        ###################
+        for _ti in _del_queue:
+            del self._priv_th_queue[_ti]
+        print '>'*20,'Cleaned: %s. Remained: %s'% (len(_del_queue), len(self._priv_th_queue))
 
     def stop_work(self):
         for session in self._sessions:
             session.stop_dht()
             torrents = session.get_torrents()
+            ###################
             for torrent in torrents:
                 session.remove_torrent(torrent,1)
-	content = Template("Got count: ${got}\n Delete count: ${del}").safe_substitute({'got': self._the_got_count, 'del': self._the_delete_count})
-	with open('counter_got&del.stat', 'wb') as f:
-		f.write(content)
+        ###################
+        content = Template("Got count: ${got}\n Delete count: ${del}").safe_substitute({'got': self._the_got_count, 'del': self._the_delete_count})
+        with open('counter_got&del.stat', 'wb') as f:
+            f.write(content)
 
     def start_work(self):
         while True and not self._end:
             _length = 0
+            ###################
             for session in self._sessions:
                 '''
                 request this session to POST state_update_alert
@@ -216,19 +225,21 @@ class DHTCollector(DataLog):
                 #session.post_torrent_updates()
                 _alerts = []
                 _alert = True
-                
+                ###################
                 while _alert:
                     _alerts.append(_alert)
                     _alert = session.pop_alert()
-                
+                ###################
                 _alerts.remove(True)
                 self._handle_alerts(session, _alerts)
                 _ths = session.get_torrents()
+                ###################
                 for th in _ths:
                     status = th.status()
                     if str(status.state) == 'downloading':
                         if status.progress > 1e-10:
                             self._the_deleted_count += 1
+                            print '>'*20,'delete %.10f'%status.progress
                             self.send_log({
                                 'r': 'dht',
                                 'i': '3'
@@ -236,7 +247,16 @@ class DHTCollector(DataLog):
                             session.remove_torrent(th,1)
                     else:
                         _length += 1
-            print '*'*10,_length
+                        _ti = str(th.info_hash())
+                        if _ti in self._priv_th_queue:
+                            self._priv_th_queue[_ti]['p'] += 1
+                        else:
+                            self._priv_th_queue[_ti] = {'_session': session, '_th': th, 'p': 1}
+            ###################
+            if _length > THRESHOLD:
+                Thread(target=self.clean_passive_torrent,args=()).start()
+            else:
+                print '>'*20,_length
             time.sleep(self._sleep_time)
 
 def main(opt, args):
@@ -262,11 +282,17 @@ if __name__ == '__main__':
 
     parser.add_option('-p', '--port', action='store', type='int',
                      dest='listen_port', default=8001, metavar='LISTEN-PORT',
-                     help='the listen port')
+                     help='the listen port.')
     
     parser.add_option('-n', '--snum', action='store', type='int',
                      dest='session_num', default=50, metavar='SESSION-NUM',
-                     help='the dht sessions num')
+                     help='the dht sessions num.')
+
+    parser.add_option('-t', '--threshold', action='store', type='int',
+                     dest='threshold', default=1000, metavar='THRESHOLD-VAL',
+                     help='the clean threshold value.')
 
     options, args = parser.parse_args()
+
+    THRESHOLD = options.threshold
     main(options, args)
