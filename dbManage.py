@@ -111,7 +111,7 @@ class DBManage(DataLog):
 					'i': '1',
 					'm': "ConnectionError %s" % str(e.message)
 				})
-				self.conDB(True)
+				self.conDB()
 			except Exception,e:
 				print 'Insert Error',str(e.message)
 				self.send_log({
