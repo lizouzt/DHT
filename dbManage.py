@@ -2,7 +2,7 @@
 '''
 Created on 2014-11-30
 
-@author: Elfer
+@author: tao.z
 '''
 import pdb
 import os
@@ -11,6 +11,7 @@ from bencode import bencode, bdecode
 from sqlalchemy import *
 from sqlalchemy import exc as EXC
 from sqlalchemy.orm import mapper,sessionmaker,create_session
+from dataLog import *
 from settings import *
 
 class Movie(object):
@@ -18,20 +19,6 @@ class Movie(object):
 
 class Torrents(object):
 	pass
-
-class DataLog(object):
-	"""docstring for DataLog"""
-	def __init__(self, port=9998):
-		super(DataLog, self).__init__()
-		self.socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-		self.socket.bind(("0.0.0.0", port))
-
-	def send_log(self, msg, address=(DLHOST,DLPORT)):
-		msg['t'] = TOKEN
-		try:
-			self.socket.sendto(bencode(msg), address)
-		except Exception,e:
-			pass
 
 class DBManage(DataLog):
 	DEFAULT_VAL = '未知'
@@ -103,15 +90,20 @@ class DBManage(DataLog):
 			Maker.configure(bind=self.db)
 			try:
 				session = Maker()
-				# if session.query(Torrents).filter_by(info_hash=torrent.info_hash).scalar() == None:
-				session.add(torrent)
-				session.flush()
-				session.commit()
-				print 'Inserted'
-				self.send_log({
-					'r': 'dht',
-					'i': '0'
-				})
+				if session.query(Torrents).filter_by(info_hash=torrent.info_hash).scalar() == None:
+					session.add(torrent)
+					session.flush()
+					session.commit()
+					print 'Inserted'
+					self.send_log({
+						'r': 'dht',
+						'i': '0'
+					})
+				else:
+					self.send_log({
+						'r': 'dht',
+						'i': '-1'
+					})
 			except (EXC.DisconnectionError,EXC.OperationalError) as e:
 				print 'ConnectionError',e.message
 				self.send_log({

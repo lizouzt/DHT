@@ -2,7 +2,7 @@
 '''
 Created on 2015-04-01
 
-@author: Elfer
+@author: tao.z
 '''
 import pdb
 import os,sys,time,logging,json,re 
@@ -24,6 +24,8 @@ class Statistic(object):
     begin_time = time.time()
     _count_insert = {}
     _count_error = {}
+    _count_delete = {}
+    _count_repeat = 0
     _count_invalid_msg = 0
     def __init__(self, file_name='dht.stat'):
         self._stat_file = file_name
@@ -58,6 +60,9 @@ class Statistic(object):
         for host in self._count_error:
             total_error += self._count_error[host]
             individualData += '  Host %s Errors: %d \n' % (host,self._count_error[host])
+        for host in self._count_delete:
+            total_error += self._count_delete[host]
+            individualData += '  Host %s Delete: %d \n' % (host,self._count_delete[host])
 
         content = ['torrents:']
         interval = time.time() - self.begin_time
@@ -66,6 +71,7 @@ class Statistic(object):
         content.append('  Run time: %s \n' % get_time_formatter(interval))
         content.append('  Get invalid TCP nums: %d \n' % self._count_invalid_msg)
         content.append('  Get BT nums: %d \n' % total_success)
+        content.append('  Repeat nums: %d \n' % self._count_repeat)
         content.append('  Error nums: %d \n' % total_error)
         content.append(individualData)
         content.append('\n')
@@ -99,28 +105,36 @@ class Statistic(object):
     def dht_record(self, t, *dic):
         if t is None:
             return -1
-        elif t == 0:
-            print 'insert.'
+        elif t == '0':
+            print 'insert from ',dic[0]
             if dic[0] not in self._count_insert:
                 self._count_insert[dic[0]] = 1
             else:
                 self._count_insert[dic[0]] += 1
-        elif t == 1:
+        elif t == '-1':
+            self._count_repeat += 1
+        elif t == '1':
             if dic[0] not in self._count_error:
                 self._count_error[dic[0]] = 1
             else:
                 self._count_error[dic[0]] += 1
             self.log('DB Err from: %s ---> %s', dic, type='error')
-        elif t == 2:
+        elif t == '2':
             self._count_invalid_msg += 1
             self.log('invalid tcp message from %s::%d', dic, type='error')
+        elif t == '3':
+            if dic[0] not in self._count_delete:
+                self._count_delete[dic[0]] = 1
+            else:
+                self._count_delete[dic[0]] += 1
         else:
             pass
 
     def dht_log_sys(self,info,address):
-        if info['i'] == '0':
-            self.dht_record(0, address[0])
-        elif info['i'] == '1':
+        _type = info['i']
+        if _type in ['0','3','-1']:
+            self.dht_record(_type, address[0])
+        elif _type == '1':
             self.dht_record(1, address[0], info['m'])
         else:
             pass

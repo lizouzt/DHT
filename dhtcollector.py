@@ -10,6 +10,7 @@ from threading import Timer,Thread
 from bencode import bdecode
 from urllib2 import HTTPError
 import dbManage
+from dataLog import *
 from settings import *
 
 manage = dbManage.DBManage()
@@ -25,18 +26,19 @@ _download_rate_limit = 200000
 _alert_queue_size = 2000
 _max_connections = 100
 
-class DHTCollector(object):
+class DHTCollector(DataLog):
     _ALERT_TYPE_SESSION = None
+    _the_delete_count = 0
+    _the_got_count = 0
     _sleep_time = 1
     _sessions = []
     _meta_list = []
     _end = False
 
-    def __init__(self,
-		 port,
-                 session_num):
+    def __init__(self,port,session_num):
+        DataLog.__init__(self,9997)
         self._session_num = session_num
-	self._port = port
+        self._port = port
         self.begin_time = time.time()
 
     def _get_file_info_from_torrent(self, handle):
@@ -53,13 +55,12 @@ class DHTCollector(object):
 
             meta['media_type'] = None
             meta['files'] = []
-
-	    _count = 66
+            _count = 66
             for _fd in torrent_info.files():
-		if _count == 0:
-		    break
-		_count -= 1
-		if not hasattr(_fd, 'path') or not hasattr(_fd,'size'):
+                if _count == 0:
+                    break
+                _count -= 1
+                if not hasattr(_fd, 'path') or not hasattr(_fd,'size'):
                     continue
                 meta['files'].append({
                     'path': _fd.path,
@@ -72,11 +73,12 @@ class DHTCollector(object):
                     meta['media_type'] = 'audio'
             
             meta['files'] = json.dumps(meta['files'], ensure_ascii=False)
+            self._the_got_count += 1
             Thread(target=manage.saveTorrent, args=[meta]).start()
             #manage.saveTorrent(meta)
 
         except Exception, e:
-		logging.error('torrent_info_error: '+str(e))
+            logging.error('torrent_info_error: '+str(e))
 
     '''
     alert logic doc:
@@ -176,9 +178,10 @@ class DHTCollector(object):
                 session.add_dht_router(router[0],router[1])
             session.set_download_rate_limit(_download_rate_limit)
             session.set_upload_rate_limit(_upload_rate_limit)
-            session.set_alert_queue_size_limit(_alert_queue_size)
+            #session.set_alert_queue_size_limit(_alert_queue_size)
             session.set_max_connections(_max_connections)
             session.start_dht()
+            session.start_upnp()
             self._sessions.append(session)
         return self._sessions
 
@@ -199,6 +202,9 @@ class DHTCollector(object):
             torrents = session.get_torrents()
             for torrent in torrents:
                 session.remove_torrent(torrent,1)
+	content = Template("Got count: ${got}\n Delete count: ${del}").safe_substitute({'got': self._the_got_count, 'del': self._the_delete_count})
+	with open('counter_got&del.stat', 'wb') as f:
+		f.write(content)
 
     def start_work(self):
         while True and not self._end:
@@ -218,12 +224,18 @@ class DHTCollector(object):
                 _alerts.remove(True)
                 self._handle_alerts(session, _alerts)
                 _ths = session.get_torrents()
-                _length += len(_ths)
                 for th in _ths:
                     status = th.status()
-                    if str(status.state) == 'downloading' and status.progress > 1e-10:
-                        print 'delete %.20f'%status.progress
-                        session.remove_torrent(th,1)
+                    if str(status.state) == 'downloading':
+                        if status.progress > 1e-10:
+                            self._the_deleted_count += 1
+                            self.send_log({
+                                'r': 'dht',
+                                'i': '3'
+                            })
+                            session.remove_torrent(th,1)
+                    else:
+                        _length += 1
             print '*'*10,_length
             time.sleep(self._sleep_time)
 
