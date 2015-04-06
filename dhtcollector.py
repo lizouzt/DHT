@@ -13,13 +13,13 @@ import dbManage
 from dataLog import *
 from settings import *
 
-manage = dbManage.DBManage()
-
 logging.basicConfig(level=logging.INFO,
                    format='%(asctime)s [line: %(lineno)d] %(levelname)s %(message)s',
                    datefnt='%d %b %H:%M%S',
                    filename=('./%s-collector.log'% datetime.date.today().day),
                    filemode='wb')
+
+manage = dbManage.DBManage(logging)
 
 THRESHOLD = 100
 _upload_rate_limit = 200000
@@ -30,7 +30,7 @@ class DHTCollector(DataLog):
     _ALERT_TYPE_SESSION = None
     _the_delete_count = 0
     _the_got_count = 0
-    _sleep_time = 0.5
+    _sleep_time = 1
     _sessions = []
     _meta_list = []
     _end = False
@@ -183,7 +183,7 @@ class DHTCollector(DataLog):
             #session.set_max_connections(_max_connections)
             #session.set_max_half_open_connections(_max_half_open_connections)
             session.start_dht()
-            #session.start_natpmp()
+            session.start_natpmp()
             self._sessions.append(session)
         return self._sessions
 
@@ -191,7 +191,7 @@ class DHTCollector(DataLog):
         _del_queue = []
         ###################
         for _ti, _conn in self._priv_th_queue.iteritems():
-            if _conn['p'] > 60:
+            if _conn['p'] > 180:
                 _del_queue.append(_ti)
                 try:
                     _conn['_session'].remove_torrent(_conn['_th'],1)
@@ -210,13 +210,11 @@ class DHTCollector(DataLog):
             for torrent in torrents:
                 session.remove_torrent(torrent,1)
         ###################
-        content = Template("Got count: ${got}\n Delete count: ${del}").safe_substitute({'got': self._the_got_count, 'del': self._the_delete_count})
-        with open('counter_got&del.stat', 'wb') as f:
-            f.write(content)
+        content = Template("Got count: ${got} Delete count: ${del}").safe_substitute({'got': self._the_got_count, 'del': self._the_delete_count})
+        logging.info(content)
 
     def start_work(self):
         while True and not self._end:
-            _length = 0
             ###################
             for session in self._sessions:
                 '''
@@ -235,6 +233,7 @@ class DHTCollector(DataLog):
                 _ths = session.get_torrents()
                 ###################
                 for th in _ths:
+                    '''
                     status = th.status()
                     if str(status.state) == 'downloading':
                         if status.progress > 1e-10:
@@ -245,18 +244,17 @@ class DHTCollector(DataLog):
                                 'i': '3'
                             })
                             session.remove_torrent(th,1)
+                    '''
+                    _ti = str(th.info_hash())
+                    if _ti in self._priv_th_queue:
+                        self._priv_th_queue[_ti]['p'] += 1
                     else:
-                        _length += 1
-                        _ti = str(th.info_hash())
-                        if _ti in self._priv_th_queue:
-                            self._priv_th_queue[_ti]['p'] += 1
-                        else:
-                            self._priv_th_queue[_ti] = {'_session': session, '_th': th, 'p': 1}
+                        self._priv_th_queue[_ti] = {'_session': session, '_th': th, 'p': 1}
             ###################
-            if _length > THRESHOLD:
+            if len(_ths) > THRESHOLD:
                 Thread(target=self.clean_passive_torrent,args=()).start()
             else:
-                print '>'*20,_length
+                print '>'*20,len(_ths)
             time.sleep(self._sleep_time)
 
 def main(opt, args):
@@ -289,7 +287,7 @@ if __name__ == '__main__':
                      help='the dht sessions num.')
 
     parser.add_option('-t', '--threshold', action='store', type='int',
-                     dest='threshold', default=1000, metavar='THRESHOLD-VAL',
+                     dest='threshold', default=2000, metavar='THRESHOLD-VAL',
                      help='the clean threshold value.')
 
     options, args = parser.parse_args()

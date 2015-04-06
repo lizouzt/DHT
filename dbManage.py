@@ -23,7 +23,7 @@ class Torrents(object):
 class DBManage(DataLog):
 	DEFAULT_VAL = '未知'
 	db = None
-	def __init__(self):
+	def __init__(self,log):
 		DataLog.__init__(self)
 		self.conDB()
 		metadata = MetaData(bind=self.db)
@@ -37,7 +37,7 @@ class DBManage(DataLog):
 		try:
 			self.db = create_engine("mysql://%s:%s@%s/%s?charset=utf8" % (MQUSER, MQPWD, MQSERVER, MQDB))
 		except Exception,e:
-			print "ConnectionError %s" % str(e)
+			log.info("ConnectionError %s" % str(e))
 
 		need_flush and self.send_log({'r': 'needrestart','i': '1'})
 
@@ -105,7 +105,7 @@ class DBManage(DataLog):
 						'i': '-1'
 					})
 			except (EXC.DisconnectionError,EXC.OperationalError) as e:
-				print 'ConnectionError',e.message
+				log.info('ConnectionError %'%e.message)
 				self.send_log({
 					'r': 'dht',
 					'i': '1',
@@ -113,7 +113,7 @@ class DBManage(DataLog):
 				})
 				self.conDB()
 			except Exception,e:
-				print 'Insert Error',str(e.message)
+				log.info('Insert Error'%str(e.message))
 				self.send_log({
 					'r': 'dht',
 					'i': '1',

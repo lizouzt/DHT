@@ -10,7 +10,7 @@ import socket
 import time
 from bencode import bdecode
 from datetime import date
-from threading import Timer
+from threading import Timer,Thread
 from utils import get_time_formatter
 from settings import *
 
@@ -93,14 +93,14 @@ class Statistic(object):
             t = kwargs['type']
         dic = dic[0] if dic is not () else ()
 
-        log = self.logger.info
+        _log = self.logger.info
         if t == 'error':
-            log = self.logger.error
+            _log = self.logger.error
         elif t == 'warning':
-            log = self.logger.warning
+            _log = self.logger.warning
         elif t == 'debug':
-            log = self.logger.debug
-        log(info % dic)
+            _log = self.logger.debug
+        _log(info % dic)
 
     def dht_record(self, t, *dic):
         if t is None:
@@ -150,7 +150,7 @@ class Statistic(object):
             if _time - self.FLUSHSTAMP > 600:
                 self.FLUSHSTAMP = _time
                 os.system(CMD)
-                print 'Flushed'
+                self.log('Flush.')
                 return False
         return _func
 
@@ -171,7 +171,7 @@ class Statistic(object):
         while True:
             try:
                 (data, address) = sock.recvfrom(256)
-                if data: self.check_token(data, address)
+                if data: Thread(target=self.check_token, args=(data, address)).start()
             except KeyboardInterrupt:
                 sock.close()
                 END = True
