@@ -30,7 +30,7 @@ class DHTCollector(DataLog):
     _ALERT_TYPE_SESSION = None
     _the_delete_count = 0
     _the_got_count = 0
-    _sleep_time = 1
+    _sleep_time = 2
     _sessions = []
     _meta_list = []
     _end = False
@@ -191,7 +191,7 @@ class DHTCollector(DataLog):
         _del_queue = []
         ###################
         for _ti, _conn in self._priv_th_queue.iteritems():
-            if _conn['p'] > 180:
+            if _conn['p'] > 90:
                 _del_queue.append(_ti)
                 try:
                     _conn['_session'].remove_torrent(_conn['_th'],1)
