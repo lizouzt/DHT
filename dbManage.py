@@ -26,6 +26,7 @@ class DBManage(DataLog):
 	def __init__(self,log):
 		DataLog.__init__(self)
 		self.conDB()
+		self.log = log
 		metadata = MetaData(bind=self.db)
 		self.table_movies = Table('movies', metadata, autoload=True)
 		self.table_torrents = Table('torrents', metadata, autoload=True)
@@ -37,7 +38,7 @@ class DBManage(DataLog):
 		try:
 			self.db = create_engine("mysql://%s:%s@%s/%s?charset=utf8" % (MQUSER, MQPWD, MQSERVER, MQDB))
 		except Exception,e:
-			log.info("ConnectionError %s" % str(e))
+			self.log.info("ConnectionError %s" % str(e))
 
 		need_flush and self.send_log({'r': 'needrestart','i': '1'})
 
@@ -105,19 +106,19 @@ class DBManage(DataLog):
 						'i': '-1'
 					})
 			except (EXC.DisconnectionError,EXC.OperationalError) as e:
-				log.info('ConnectionError %'%e.message)
+				self.log.info('Connection Error %s'%e.message)
 				self.send_log({
 					'r': 'dht',
 					'i': '1',
-					'm': "ConnectionError %s" % str(e.message)
+					'm': "Connection Error %s" % str(e.message)
 				})
 				self.conDB()
 			except Exception,e:
-				log.info('Insert Error'%str(e.message))
+				self.log.info('Unexpected Error %s'%str(e.message))
 				self.send_log({
 					'r': 'dht',
 					'i': '1',
-					'm': "Insert Error %s" % str(e.message)
+					'm': "Unexpected Error %s" % str(e.message)
 				})
 		else:
 			print 'Nope'

@@ -14,7 +14,7 @@ from threading import Timer,Thread
 from utils import get_time_formatter
 from settings import *
 
-OUTPUT_STATFILE = 10
+OUTPUT_STATFILE = 60
 END = False
 CMD = 'sh flush.sh %s %s %s' % (MQSERVER, MQUSER, MQPWD)
 
@@ -103,6 +103,13 @@ class Statistic(object):
         _log(info % dic)
 
     def dht_record(self, t, *dic):
+	'''
+	0: 	insert
+	-1:	repeat
+	1:	error
+	2:	invalid
+	3:	delete
+	'''
         if t is None:
             return -1
         elif t == '0':
@@ -135,7 +142,7 @@ class Statistic(object):
         if _type in ['0','3','-1']:
             self.dht_record(_type, address[0])
         elif _type == '1':
-            self.dht_record(1, address[0], info['m'])
+            self.dht_record(_type, address[0], info['m'])
         else:
             pass
 
@@ -171,7 +178,8 @@ class Statistic(object):
         while True:
             try:
                 (data, address) = sock.recvfrom(256)
-                if data: Thread(target=self.check_token, args=(data, address)).start()
+                #if data: Thread(target=self.check_token, args=(data, address)).start()
+		if data: self.check_token(data,address)
             except KeyboardInterrupt:
                 sock.close()
                 END = True

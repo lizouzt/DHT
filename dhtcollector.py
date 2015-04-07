@@ -13,24 +13,32 @@ import dbManage
 from dataLog import *
 from settings import *
 
-logging.basicConfig(level=logging.INFO,
-                   format='%(asctime)s [line: %(lineno)d] %(levelname)s %(message)s',
-                   datefnt='%d %b %H:%M%S',
-                   filename=('./%s-collector.log'% datetime.date.today().day),
-                   filemode='wb')
+def getLogger(_namespace, _filestr):
+	_logger = logging.getLogger(_namespace)
+	_fh = logging.FileHandler(_filestr)
+	_sh = logging.StreamHandler()
+	_fhFmt = logging.Formatter('%(asctime)s [line: %(lineno)d] %(levelname)s %(message)s')
+	_shFmt = logging.Formatter('%(levelname)s %(message)s')
+	_fh.setFormatter(_fhFmt)
+	_sh.setFormatter(_shFmt)
+	_logger.setLevel(logging.INFO)
+	_logger.addHandler(_fh)
+	_logger.addHandler(_sh)
+	return _logger
 
-manage = dbManage.DBManage(logging)
+logger = getLogger('libt','./%s-collector.log'% datetime.date.today().day)
+manage = dbManage.DBManage(logger)
 
-THRESHOLD = 1000
+THRESHOLD = 0
 _upload_rate_limit = 200000
 _download_rate_limit = 200000
 _alert_queue_size = 4000
-_max_connections = 200
+_max_connections = 100
 class DHTCollector(DataLog):
     _ALERT_TYPE_SESSION = None
     _the_delete_count = 0
     _the_got_count = 0
-    _sleep_time = 2
+    _sleep_time = 1
     _sessions = []
     _meta_list = []
     _end = False
@@ -79,7 +87,7 @@ class DHTCollector(DataLog):
             #manage.saveTorrent(meta)
 
         except Exception, e:
-            logging.error('torrent_info_error: '+str(e))
+            logger.error('torrent_info_error: '+str(e))
 
     '''
     alert logic doc:
@@ -146,18 +154,14 @@ class DHTCollector(DataLog):
                 pass
             #################################
             # elif self._ALERT_TYPE_SESSION is not None and self._ALERT_TYPE_SESSION == session:
-            #    logging.info('********Alert message: '+ alert.message() + '    Alert category: ' + str(alert.category()))
+            #    logger.info('********Alert message: '+ alert.message() + '    Alert category: ' + str(alert.category()))
             #################################
 
-    # 添加磁力链接
     def add_magnet(self, session, info_hash):
-        # 创建临时下载目录
         if not os.path.isdir('collections'):
             os.mkdir('collections')
 
-        params = {'save_path': os.path.join(os.curdir,
-                                            'collections',
-                                            'magnet'),
+        params = {'save_path': os.path.join(os.curdir,'collections'),
                   'storage_mode': lt.storage_mode_t.storage_mode_sparse,
                   'paused': False,
                   'auto_managed': True,
@@ -211,7 +215,7 @@ class DHTCollector(DataLog):
                 session.remove_torrent(torrent,1)
         ###################
         content = Template("Got count: ${got} Delete count: ${del}").safe_substitute({'got': self._the_got_count, 'del': self._the_delete_count})
-        logging.info(content)
+        logger.info(content)
 
     def start_work(self):
         while True and not self._end:
@@ -262,7 +266,7 @@ class DHTCollector(DataLog):
 def main(opt, args):
     sd = DHTCollector(port=opt.listen_port, session_num=opt.session_num)
     try:
-        print 'Start.'
+        logger.info('Start.')
         sd.create_session()
         sd.start_work()
     except KeyboardInterrupt:
@@ -272,7 +276,7 @@ def main(opt, args):
         print 'Interrupted!'
         exit()
     except Exception, e:
-        print 'Service Error: ',e
+        print '*'*40,'\n','Service Error: ',e
 
 if __name__ == '__main__':
     from optparse import OptionParser
@@ -289,7 +293,7 @@ if __name__ == '__main__':
                      help='the dht sessions num.')
 
     parser.add_option('-t', '--threshold', action='store', type='int',
-                     dest='threshold', default=2000, metavar='THRESHOLD-VAL',
+                     dest='threshold', default=1000, metavar='THRESHOLD-VAL',
                      help='the clean threshold value.')
 
     options, args = parser.parse_args()
