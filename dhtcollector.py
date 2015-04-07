@@ -32,8 +32,8 @@ manage = dbManage.DBManage(logger)
 THRESHOLD = 0
 _upload_rate_limit = 200000
 _download_rate_limit = 200000
-_alert_queue_size = 4000
-_max_connections = 100
+_alert_queue_size = 1000
+_max_connections = 50
 class DHTCollector(DataLog):
     _ALERT_TYPE_SESSION = None
     _the_delete_count = 0
@@ -195,7 +195,7 @@ class DHTCollector(DataLog):
         _del_queue = []
         ###################
         for _ti, _conn in self._priv_th_queue.iteritems():
-            if _conn['p'] > 120:
+            if _conn['p'] > 240:
                 _del_queue.append(_ti)
                 try:
                     _conn['_session'].remove_torrent(_conn['_th'],1)
