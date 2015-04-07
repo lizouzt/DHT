@@ -21,7 +21,7 @@ logging.basicConfig(level=logging.INFO,
 
 manage = dbManage.DBManage(logging)
 
-THRESHOLD = 100
+THRESHOLD = 1000
 _upload_rate_limit = 200000
 _download_rate_limit = 200000
 _alert_queue_size = 4000
@@ -191,7 +191,7 @@ class DHTCollector(DataLog):
         _del_queue = []
         ###################
         for _ti, _conn in self._priv_th_queue.iteritems():
-            if _conn['p'] > 90:
+            if _conn['p'] > 120:
                 _del_queue.append(_ti)
                 try:
                     _conn['_session'].remove_torrent(_conn['_th'],1)
@@ -216,6 +216,7 @@ class DHTCollector(DataLog):
     def start_work(self):
         while True and not self._end:
             ###################
+	    _length = 0
             for session in self._sessions:
                 '''
                 request this session to POST state_update_alert
@@ -245,16 +246,17 @@ class DHTCollector(DataLog):
                             })
                             session.remove_torrent(th,1)
                     '''
+		    _length += 1
                     _ti = str(th.info_hash())
                     if _ti in self._priv_th_queue:
                         self._priv_th_queue[_ti]['p'] += 1
                     else:
                         self._priv_th_queue[_ti] = {'_session': session, '_th': th, 'p': 1}
             ###################
-            if len(_ths) > THRESHOLD:
+            if _length > THRESHOLD:
                 Thread(target=self.clean_passive_torrent,args=()).start()
             else:
-                print '>'*20,len(_ths)
+                print '>'*20,_length
             time.sleep(self._sleep_time)
 
 def main(opt, args):
