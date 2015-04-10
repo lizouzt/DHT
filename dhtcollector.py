@@ -64,7 +64,7 @@ class DHTCollector(DataLog):
 
             meta['media_type'] = None
             meta['files'] = []
-            _count = 66
+            _count = 60
             for _fd in torrent_info.files():
                 if _count == 0:
                     break

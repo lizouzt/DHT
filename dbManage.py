@@ -20,23 +20,28 @@ class Movie(object):
 class Torrents(object):
 	pass
 
+def info(dic):
+	print dic
+
 class DBManage(DataLog):
 	DEFAULT_VAL = '未知'
 	db = None
+	_isReconning = False
 	def __init__(self,log):
 		DataLog.__init__(self)
-		self.conDB()
 		self.log = log
-		metadata = MetaData(bind=self.db)
-		self.table_movies = Table('movies', metadata, autoload=True)
-		self.table_torrents = Table('torrents', metadata, autoload=True)
-
-		mapper_movies = mapper(Movie, self.table_movies)
-		mapper_torrent = mapper(Torrents, self.table_torrents)
+		self.conDB()
 
 	def conDB(self, need_flush=False):
+		if self._isReconning == True:
+			return
 		try:
+			self._isReconning = True
 			self.db = create_engine("mysql://%s:%s@%s/%s?charset=utf8" % (MQUSER, MQPWD, MQSERVER, MQDB))
+			metadata = MetaData(bind=self.db)
+			self.table_movies = Table('movies', metadata, autoload=True)
+			self.table_torrents = Table('torrents', metadata, autoload=True)
+			self._isReconning = False
 		except Exception,e:
 			self.log.info("ConnectionError %s" % str(e))
 
@@ -59,25 +64,25 @@ class DBManage(DataLog):
 		return movie
 
 	def reflectTorrentObject(self, data):
-		torrent = Torrents()
-		torrent.name = data['name']
-		torrent.num_files = data['num_files']
-		torrent.total_size = data['total_size']
-		torrent.info_hash = data['info_hash']
-		torrent.media_type = data['media_type']
-		torrent.files = data['files']
+		torrent = {}
+		torrent['name'] = data['name']
+		torrent['num_files'] = data['num_files']
+		torrent['total_size'] = data['total_size']
+		torrent['info_hash'] = data['info_hash']
+		torrent['media_type'] = data['media_type']
+		torrent['files'] = data['files']
 		
 		if 'valid' in data:
-			torrent.valid = data['valid']
+			torrent['valid'] = data['valid']
 
 		if 'announce' in data:
-			torrent.announce = data['announce']
-			torrent.announce_list = data['announce_list']
+			torrent['announce'] = data['announce']
+			torrent['announce_list'] = data['announce_list']
 
 		if 'creation_date' in data:
-			torrent.creation_date = data['creation_date']
+			torrent['creation_date'] = data['creation_date']
 
-		if torrent.name == None or torrent.info_hash == None:
+		if torrent['name'] == None or torrent['info_hash'] == None:
 			return None
 
 		return torrent
@@ -87,38 +92,34 @@ class DBManage(DataLog):
 		torrent = self.reflectTorrentObject(data)
 
 		if torrent is not None:
-			Maker = sessionmaker()
-			Maker.configure(bind=self.db)
 			try:
-				session = Maker()
-				if session.query(Torrents).filter_by(info_hash=torrent.info_hash).scalar() == None:
-					session.add(torrent)
-					session.flush()
-					session.commit()
-					print 'Inserted'
-					self.send_log({
-						'r': 'dht',
-						'i': '0'
-					})
-				else:
-					self.send_log({
-						'r': 'dht',
-						'i': '-1'
-					})
-			except (EXC.DisconnectionError,EXC.OperationalError) as e:
-				self.log.info('Connection Error %s'%e.message)
+				# if self.table_torrents.select(self.table_torrents.info_hash=torrent.info_hash).execute().fetchone()[1]
+				self.table_torrents.insert().execute(torrent)
+				print 'Inserted'
+				self.send_log({
+					'r': 'dht',
+					'i': '0'
+				})
+			except EXC.IntegrityError as err:
+				print 'Duplicate'
+				self.send_log({
+					'r': 'dht',
+					'i': '-1'
+				})
+			except (EXC.DisconnectionError,EXC.OperationalError) as err:
+				self.log.info('Connection Error %s'% err.message)
 				self.send_log({
 					'r': 'dht',
 					'i': '1',
-					'm': "Connection Error %s" % str(e.message)
+					'm': "Connection Error %s" % str(err.message)
 				})
 				self.conDB()
-			except Exception,e:
-				self.log.info('Unexpected Error %s'%str(e.message))
+			except Exception,err:
+				self.log.info('Unexpected Error %s' % str(err.message))
 				self.send_log({
 					'r': 'dht',
 					'i': '1',
-					'm': "Unexpected Error %s" % str(e.message)
+					'm': "Unexpected Error %s" % str(err.message)
 				})
 		else:
 			print 'Nope'
