@@ -21,7 +21,7 @@ from utils import get_time_formatter
 from dbManage import DBManage
 from settings import *
 
-OUTPUT_STATFILE = 60
+OUTPUT_STATFILE = 10
 END = False
 MANAGE = DBManage()
 class Statistic(object):

@@ -81,7 +81,7 @@ class DHTCollector(DataLog):
                 elif meta['media_type'] is None and re.search(RAUDIO, _fd.path):
                     meta['media_type'] = 'audio'
             
-            meta['files'] = json.dumps(meta['files'], ensure_ascii=False)
+            # meta['files'] = json.dumps(meta['files'], ensure_ascii=False)
             self._the_got_count += 1
             Thread(target=manage.saveTorrent, args=[meta]).start()
             #manage.saveTorrent(meta)
@@ -238,19 +238,13 @@ class DHTCollector(DataLog):
                 _ths = session.get_torrents()
                 ###################
                 for th in _ths:
-                    '''
                     status = th.status()
                     if str(status.state) == 'downloading':
                         if status.progress > 1e-10:
                             self._the_deleted_count += 1
                             print '>'*20,'delete %.10f'%status.progress
-                            self.send_log({
-                                'r': 'dht',
-                                'i': '3'
-                            })
                             session.remove_torrent(th,1)
-                    '''
-		    _length += 1
+                    _length += 1
                     _ti = str(th.info_hash())
                     if _ti in self._priv_th_queue:
                         self._priv_th_queue[_ti]['p'] += 1

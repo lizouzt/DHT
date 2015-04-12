@@ -8,22 +8,17 @@ import pdb
 import os
 import socket
 from bencode import bencode, bdecode
-from sqlalchemy import *
-from sqlalchemy import exc as EXC
-from sqlalchemy.orm import mapper,sessionmaker,create_session
+from pymongo import MongoClient
 from dataLog import *
 from settings import *
-
-class Movie(object):
-	pass
 
 class Torrents(object):
 	pass
 
-def info(dic):
-	print dic
-
 class DBManage(DataLog):
+	SQLINSERT = "INSERT into \
+				torrents(name,num_files,total_size,valid,creation_date,info_hash,media_type,files) \
+				values (%s,%s,%s,%s,%s,%s,%s,%s)"
 	DEFAULT_VAL = '未知'
 	db = None
 	_isReconning = False
@@ -33,112 +28,79 @@ class DBManage(DataLog):
 		self.conDB()
 
 	def conDB(self, need_flush=False):
-		if self._isReconning == True:
+		if self._isReconning is True:
 			return
 		try:
 			self._isReconning = True
-			self.db = create_engine("mysql://%s:%s@%s/%s?charset=utf8" % (MQUSER, MQPWD, MQSERVER, MQDB))
-			metadata = MetaData(bind=self.db)
-			self.table_movies = Table('movies', metadata, autoload=True)
-			self.table_torrents = Table('torrents', metadata, autoload=True)
-			self._isReconning = False
+			client = MongoClient('mongodb://%s:%s/?authMechanism=SCRAM-SHA-1'%(MHOST,MPORT))
+			client.dht.authenticate(MUSER,MPWD)
+			self.col_torrents = client.dht.torrents
+			self.col_files = client.dht.files
 		except Exception,e:
-			self.log.info("ConnectionError %s" % str(e))
+			print e
+			# self.log.info("ConnectionError %s" % str(e))
 
 		need_flush and self.send_log({'r': 'needrestart','i': '1'})
 
 	def reflectMovieObject(self, data):
-		movie = Movie()
-		movie.id = data['id']
-		movie.type = data['type']
-		movie.image = data['image']
-		movie.title = data['title'] or self.DEFAULT_VAL
-		movie.area = data['area'] or self.DEFAULT_VAL
-		movie.directors = ';'.join(data['directors']) or self.DEFAULT_VAL
-		movie.actors = ';'.join(data['actors']) or self.DEFAULT_VAL
-		movie.year = data['year'] or self.DEFAULT_VAL
-		movie.abstract = data['abstract'] or self.DEFAULT_VAL
-		if movie.id == None or movie.id == '' or movie.id == 'null' or movie.type == None or movie.type == '' or movie.type == 'null':
-			return None
-
-		return movie
+		pass
 
 	def reflectTorrentObject(self, data):
-		torrent = {}
-		torrent['name'] = data['name']
-		torrent['num_files'] = data['num_files']
-		torrent['total_size'] = data['total_size']
-		torrent['info_hash'] = data['info_hash']
-		torrent['media_type'] = data['media_type']
-		torrent['files'] = data['files']
-		
-		if 'valid' in data:
-			torrent['valid'] = data['valid']
-
-		if 'announce' in data:
-			torrent['announce'] = data['announce']
-			torrent['announce_list'] = data['announce_list']
-
-		if 'creation_date' in data:
-			torrent['creation_date'] = data['creation_date']
-
-		if torrent['name'] == None or torrent['info_hash'] == None:
+		if data['name'] == None or data['info_hash'] == None:
 			return None
 
-		return torrent
+		torrent = data
+		files = {'info_hash': data['info_hash'],'files':data['files']}
+		torrent['valid'] = data['valid'] if 'valid' in data else '0'
+		torrent['creation_date'] = data['creation_date'] if 'creation_date' in data else ''
+		del torrent['files']
 
+		return torrent,files
 
 	def saveTorrent(self, data):
-		torrent = self.reflectTorrentObject(data)
-
+		torrent,files = self.reflectTorrentObject(data)
 		if torrent is not None:
 			try:
-				# if self.table_torrents.select(self.table_torrents.info_hash=torrent.info_hash).execute().fetchone()[1]
-				self.table_torrents.insert().execute(torrent)
-				print 'Inserted'
-				self.send_log({
-					'r': 'dht',
-					'i': '0'
-				})
-			except EXC.IntegrityError as err:
-				print 'Duplicate'
-				self.send_log({
-					'r': 'dht',
-					'i': '-1'
-				})
-			except (EXC.DisconnectionError,EXC.OperationalError) as err:
-				self.log.info('Connection Error %s'% err.message)
-				self.send_log({
-					'r': 'dht',
-					'i': '1',
-					'm': "Connection Error %s" % str(err.message)
-				})
-				self.conDB()
+				if self.col_torrents.find_one({'info_hash':torrent['info_hash']}) is None:
+					self.col_torrents.insert_one(torrent)
+					self.col_files.insert_one(files)
+					print 'Inserted'
+					self._isReconning = False
+					self.send_log({
+						'r': 'dht',
+						'i': '0'
+					})
+				else:
+					print 'Duplicate'
+					self.send_log({
+						'r': 'dht',
+						'i': '-1'
+					})
 			except Exception,err:
-				self.log.info('Unexpected Error %s' % str(err.message))
-				self.send_log({
-					'r': 'dht',
-					'i': '1',
-					'm': "Unexpected Error %s" % str(err.message)
-				})
+				error = err.args[0]
+				
+				if error.index('[Errno 61] Connection refused') > -1:
+					self.log.info('Connection Error %s'% err.message)
+					self.send_log({
+						'r': 'dht',
+						'i': '1',
+						'm': "Connection Error %s" % str(err.message)
+					})
+					self.conDB()
+				else:
+					self.log.info('Unexpected Error %s' % str(err.message))
+					self.send_log({
+						'r': 'dht',
+						'i': '1',
+						'm': "Unexpected Error %s" % str(err.message)
+					})
+			finally:
+				pass
 		else:
 			print 'Nope'
 
 	def saveMovie(self, data):
-		movie = self.reflectMovieObject(data)
-
-		if movie is not None:
-			Maker = sessionmaker()
-			Maker.configure(bind=self.db)
-			session = Maker()
-
-			if session.query(Movie).filter_by(id=movie.id).scalar() == None:
-				session.add(movie)
-				session.flush()
-
-			session.commit()
-		else:
-			print 'Nope'
+		pass
 
 	def queryMovies(self, params):
 		pass
