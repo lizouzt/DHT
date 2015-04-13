@@ -53,7 +53,7 @@ class DBManage(DataLog):
 		files = {'info_hash': data['info_hash'],'files':data['files']}
 		torrent['valid'] = data['valid'] if 'valid' in data else '0'
 		torrent['creation_date'] = data['creation_date'] if 'creation_date' in data else ''
-		del torrent['files']
+		torrent['files'] = data['files'].__getslice__(0,5)
 
 		return torrent,files
 
