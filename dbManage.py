@@ -79,7 +79,7 @@ class DBManage(DataLog):
 			except Exception,err:
 				error = err.args[0]
 				
-				if error.index('[Errno 61] Connection refused') > -1:
+				if typeof(error) == str and error.index('[Errno 61] Connection refused') > -1:
 					self.log.info('Connection Error %s'% err.message)
 					self.send_log({
 						'r': 'dht',
