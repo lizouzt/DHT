@@ -15,6 +15,7 @@ class DataLog(object):
         super(DataLog, self).__init__()
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.socket.bind(("0.0.0.0", port))
+	self.socket.setblocking(0)
 
     def send_log(self, msg, address=(DLHOST,DLPORT)):
         msg['t'] = TOKEN
