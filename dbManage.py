@@ -61,7 +61,7 @@ class DBManage(DataLog):
 		torrent,files = self.reflectTorrentObject(data)
 		if torrent is not None:
 			try:
-				if self.col_torrents.find_one({'info_hash':torrent['info_hash']}) is None:
+				if self.col_torrents.find_one({'info_hash':torrent['info_hash']},no_cursor_timeout=False) is None:
 					self.col_torrents.insert_one(torrent)
 					self.col_files.insert_one(files)
 					print 'Inserted'
@@ -77,23 +77,16 @@ class DBManage(DataLog):
 						'i': '-1'
 					})
 			except Exception,err:
-				error = err.args[0]
+				error = str(err.args[0])
 				
-				if typeof(error) == str and error.index('[Errno 61] Connection refused') > -1:
-					self.log.info('Connection Error %s'% err.message)
-					self.send_log({
-						'r': 'dht',
-						'i': '1',
-						'm': "Connection Error %s" % str(err.message)
-					})
+				self.log.info('Unexpected Error %s' % str(err))
+				self.send_log({
+					'r': 'dht',
+					'i': '1',
+					'm': "Connection Error %s" % str(err)
+				})
+				if 'Connection refused' in error:
 					self.conDB()
-				else:
-					self.log.info('Unexpected Error %s' % str(err.message))
-					self.send_log({
-						'r': 'dht',
-						'i': '1',
-						'm': "Unexpected Error %s" % str(err.message)
-					})
 			finally:
 				pass
 		else:

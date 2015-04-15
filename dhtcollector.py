@@ -34,6 +34,7 @@ _upload_rate_limit = 200000
 _download_rate_limit = 200000
 _alert_queue_size = 1000
 _max_connections = 50
+_max_uploads = 30
 class DHTCollector(DataLog):
     _ALERT_TYPE_SESSION = None
     _the_delete_count = 0
@@ -186,6 +187,7 @@ class DHTCollector(DataLog):
             session.set_alert_queue_size_limit(_alert_queue_size)
             #session.set_max_connections(_max_connections)
             #session.set_max_half_open_connections(_max_half_open_connections)
+	    session.set_max_uploads(_max_uploads)
             session.start_dht()
             session.start_natpmp()
             self._sessions.append(session)
@@ -204,7 +206,7 @@ class DHTCollector(DataLog):
         ###################
         for _ti in _del_queue:
             del self._priv_th_queue[_ti]
-        print '>'*20,'Cleaned: %s. Remained: %s'% (len(_del_queue), len(self._priv_th_queue))
+        #print '>'*20,'Cleaned: %s. Remained: %s'% (len(_del_queue), len(self._priv_th_queue))
 
     def stop_work(self):
         for session in self._sessions:
@@ -253,8 +255,8 @@ class DHTCollector(DataLog):
             ###################
             if _length > THRESHOLD:
                 Thread(target=self.clean_passive_torrent,args=()).start()
-            else:
-                print '>'*20,_length
+            #else:
+            #    print '>'*20,_length
             time.sleep(self._sleep_time)
 
 def main(opt, args):
@@ -293,4 +295,5 @@ if __name__ == '__main__':
     options, args = parser.parse_args()
 
     THRESHOLD = options.threshold
+    logger.info('Port: %s, Threshold: %s, Session num: %s'%(options.listen_port, options.session_num, options.threshold))
     main(options, args)
