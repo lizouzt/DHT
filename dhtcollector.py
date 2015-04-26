@@ -31,7 +31,7 @@ manage = dbManage.DBManage(logger)
 THRESHOLD = 0
 _upload_rate_limit = 200000
 _download_rate_limit = 200000
-_alert_queue_size = 1000
+_alert_queue_size = 4000
 _max_connections = 50
 class DHTCollector():
     _ALERT_TYPE_SESSION = None
@@ -222,25 +222,20 @@ class DHTCollector():
                 '''
                 request this session to POST state_update_alert
                 '''
-                #session.post_torrent_updates()
-                _alerts = []
-                _alert = True
-                ###################
-                while _alert:
-                    _alerts.append(_alert)
-                    _alert = session.pop_alert()
-                ###################
-                _alerts.remove(True)
-                self._handle_alerts(session, _alerts)
+                session.post_torrent_updates()
+                self._handle_alerts(session, session.pop_alerts())
+
                 _ths = session.get_torrents()
                 ###################
                 for th in _ths:
+                    '''
                     status = th.status()
                     if str(status.state) == 'downloading':
                         if status.progress > 1e-10:
                             self._the_deleted_count += 1
                             logger.info('\n delete %.10f \n'%status.progress)
                             session.remove_torrent(th,1)
+                    '''
                     _length += 1
                     _ti = str(th.info_hash())
                     if _ti in self._priv_th_queue:
@@ -250,8 +245,8 @@ class DHTCollector():
             ###################
             if _length > THRESHOLD:
                 Thread(target=self.clean_passive_torrent,args=()).start()
-            #else:
-            #    print '>'*20,_length
+            else:
+               print '>'*20,_length
             time.sleep(self._sleep_time)
 
 def main(opt, args):
@@ -291,5 +286,5 @@ if __name__ == '__main__':
     options, args = parser.parse_args()
 
     THRESHOLD = options.threshold
-    logger.info('Port: %s, Threshold: %s, Session num: %s'%(options.listen_port, options.session_num, options.threshold))
+    logger.info('Port: %s, Session num: %s, Threshold: %s'%(options.listen_port, options.session_num, options.threshold))
     main(options, args)
