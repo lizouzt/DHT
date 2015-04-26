@@ -14,7 +14,7 @@ from threading import Timer,Thread
 from utils import get_time_formatter
 from settings import *
 
-OUTPUT_STATFILE = 60
+OUTPUT_STATFILE = 30
 END = False
 CMD = 'sh flush.sh %s %s %s' % (MQSERVER, MQUSER, MQPWD)
 
@@ -183,13 +183,13 @@ class Statistic(object):
         while True:
             try:
                 (data, address) = sock.recvfrom(256)
-                #if data: Thread(target=self.check_token, args=(data, address)).start()
-		if data: self.check_token(data,address)
+                if data: Thread(target=self.check_token, args=(data, address)).start()
+                # if data: self.check_token(data,address)
             except KeyboardInterrupt:
                 sock.close()
                 END = True
                 self.log('STOPPED')
-                exit()
+                sys.exit()
             except Exception,e:
                 print e
 

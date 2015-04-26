@@ -1,6 +1,5 @@
 # coding: utf-8
 
-import pdb
 import os, sys
 import json, time, re, logging
 import datetime
@@ -10,7 +9,6 @@ from threading import Timer,Thread
 from bencode import bdecode
 from urllib2 import HTTPError
 import dbManage
-from dataLog import *
 from settings import *
 
 def getLogger(_namespace, _filestr):
@@ -27,6 +25,7 @@ def getLogger(_namespace, _filestr):
 	return _logger
 
 logger = getLogger('libt','./%s-collector.log'% datetime.date.today().day)
+
 manage = dbManage.DBManage(logger)
 
 THRESHOLD = 0
@@ -34,19 +33,16 @@ _upload_rate_limit = 200000
 _download_rate_limit = 200000
 _alert_queue_size = 1000
 _max_connections = 50
-_max_uploads = 30
-class DHTCollector(DataLog):
+class DHTCollector():
     _ALERT_TYPE_SESSION = None
-    _the_delete_count = 0
-    _the_got_count = 0
-    _sleep_time = 0.5
+    _sleep_time = 0.7
     _sessions = []
     _meta_list = []
     _end = False
     _priv_th_queue = {}
+    info_hash_queue = []
 
     def __init__(self,port,session_num):
-        DataLog.__init__(self,9997)
         self._session_num = session_num
         self._port = port
         self.begin_time = time.time()
@@ -83,7 +79,6 @@ class DHTCollector(DataLog):
                     meta['media_type'] = 'audio'
             
             # meta['files'] = json.dumps(meta['files'], ensure_ascii=False)
-            self._the_got_count += 1
             Thread(target=manage.saveTorrent, args=[meta]).start()
             #manage.saveTorrent(meta)
 
@@ -159,8 +154,10 @@ class DHTCollector(DataLog):
             #################################
 
     def add_magnet(self, session, info_hash):
-        if not os.path.isdir('collections'):
-            os.mkdir('collections')
+        if info_hash in self.info_hash_queue:
+            return
+        else:
+            self.info_hash_queue.append(str(info_hash))
 
         params = {'save_path': os.path.join(os.curdir,'collections'),
                   'storage_mode': lt.storage_mode_t.storage_mode_sparse,
@@ -169,9 +166,9 @@ class DHTCollector(DataLog):
                   'duplicate_is_error': False,
                   'info_hash': info_hash}
         try:
-		session.add_torrent(params)
-	except Exception:
-		pass
+            session.add_torrent(params)
+        except Exception:
+            pass
 
     def create_session(self):
         begin_port = self._port
@@ -187,7 +184,6 @@ class DHTCollector(DataLog):
             session.set_alert_queue_size_limit(_alert_queue_size)
             #session.set_max_connections(_max_connections)
             #session.set_max_half_open_connections(_max_half_open_connections)
-	    session.set_max_uploads(_max_uploads)
             session.start_dht()
             session.start_natpmp()
             self._sessions.append(session)
@@ -197,7 +193,7 @@ class DHTCollector(DataLog):
         _del_queue = []
         ###################
         for _ti, _conn in self._priv_th_queue.iteritems():
-            if _conn['p'] > 540:
+            if _conn['p'] > 450:
                 _del_queue.append(_ti)
                 try:
                     _conn['_session'].remove_torrent(_conn['_th'],1)
@@ -206,23 +202,22 @@ class DHTCollector(DataLog):
         ###################
         for _ti in _del_queue:
             del self._priv_th_queue[_ti]
+            self.info_hash_queue.remove(_ti)
         #print '>'*20,'Cleaned: %s. Remained: %s'% (len(_del_queue), len(self._priv_th_queue))
 
     def stop_work(self):
+        self._end = True
         for session in self._sessions:
             session.stop_dht()
             torrents = session.get_torrents()
             ###################
             for torrent in torrents:
                 session.remove_torrent(torrent,1)
-        ###################
-        content = Template("Got count: ${got} Delete count: ${del}").safe_substitute({'got': self._the_got_count, 'del': self._the_delete_count})
-        logger.info(content)
 
     def start_work(self):
         while True and not self._end:
             ###################
-	    _length = 0
+            _length = 0
             for session in self._sessions:
                 '''
                 request this session to POST state_update_alert
@@ -244,7 +239,7 @@ class DHTCollector(DataLog):
                     if str(status.state) == 'downloading':
                         if status.progress > 1e-10:
                             self._the_deleted_count += 1
-                            print '>'*20,'delete %.10f'%status.progress
+                            logger.info('\n delete %.10f \n'%status.progress)
                             session.remove_torrent(th,1)
                     _length += 1
                     _ti = str(th.info_hash())
@@ -260,19 +255,20 @@ class DHTCollector(DataLog):
             time.sleep(self._sleep_time)
 
 def main(opt, args):
+    if not os.path.isdir('collections'):
+        os.mkdir('collections')
+    
     sd = DHTCollector(port=opt.listen_port, session_num=opt.session_num)
     try:
         logger.info('Start.')
         sd.create_session()
         sd.start_work()
     except KeyboardInterrupt:
-        sd.stop_work()
-        manage.socket.close()
-        sd._end = True
         print 'Interrupted!'
-        exit()
+        sd.stop_work()
+        sys.exit()
     except Exception, e:
-        print '*'*40,'\n','Service Error: ',e
+        logger.info('*'*40,'\n','Service Error: ',e)
 
 if __name__ == '__main__':
     from optparse import OptionParser
