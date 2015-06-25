@@ -1,3 +1,5 @@
+## If there's anyone interested with bt search engine, we can share datas.
+
 ##DHT 
 * Get torrent data from DHT net.
 * Check for peers trackers.
