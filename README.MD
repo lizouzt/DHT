@@ -1,4 +1,4 @@
-## If there's anyone interested with bt search engine, we can share datas.
+## If there's anyone interested with bt search engine, we can share.
 
 ##DHT 
 * Get torrent data from DHT net.
