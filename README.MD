@@ -19,6 +19,9 @@
                             the listen port.
       -n SESSION-NUM, --snum=SESSION-NUM
                             the dht sessions num.
-      -t THRESHOLD-VAL, --threshold=THRESHOLD-VAL
-                            the clean threshold value.
+      -l LOOP-NUM, --loop=LOOP-NUM.
+                            the maximum num one torrentHandler will seeding. And each loop cost 0.7s.
+
+use udp send statistic info.
+statistic.py
 ```

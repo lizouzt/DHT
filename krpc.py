@@ -10,7 +10,6 @@ from bisect import bisect_left
 from bencode import bencode, bdecode
 from time import sleep
 from utils import *
-from getTorrent import Peer
 from settings import *
 
 logger = logging.getLogger('dht')
@@ -37,8 +36,6 @@ REBORN_TIME = {'time': 10 * 60, 'timer': None}
 #######################
 try_get_peers_infohash_list = {}
 #######################
-
-peer = Peer(BTDPORT)
 
 class BucketFull(Exception):  
     pass
